@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// ─── Supabase (read-only client — writing goes via serverless function) ────────
+// ─── Supabase ─────────────────────────────────────────────────────────────────
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY;
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -17,6 +17,7 @@ async function dbSave(key, data) {
   if (error) console.error("Save error:", error);
 }
 
+// ─── Netlify function (used only for approve/reject/change-password) ──────────
 async function callFunction(body) {
   const res = await fetch("/.netlify/functions/booking-action", {
     method: "POST",
@@ -24,6 +25,49 @@ async function callFunction(body) {
     body: JSON.stringify(body),
   });
   return res.json();
+}
+
+// ─── EmailJS ──────────────────────────────────────────────────────────────────
+const EMAILJS_PUBLIC_KEY  = "UgQVS5byaadBrG2DK";
+const EMAILJS_SERVICE_ID  = "service_txop20q";
+const EMAILJS_TEMPLATE_ID = "template_gwdwf69";
+
+async function sendApprovalEmail({ toEmail, labName, bookingType, booking, approveUrl, rejectUrl }) {
+  const params = {
+    to_email:     toEmail,
+    lab_name:     labName,
+    booking_type: bookingType,
+    teacher:      booking.teacher,
+    class:        booking.class,
+    subject:      booking.subject,
+    day:          booking.day || "—",
+    period_label: booking.periodLabel || "—",
+    period_time:  booking.periodTime  || "—",
+    activity:     booking.activityOverview  || "—",
+    equipment:    booking.requiredEquipment || "—",
+    students:     booking.numStudents
+                    ? `${booking.numStudents}${booking.numGroups ? ` (${booking.numGroups} groups)` : ""}`
+                    : "—",
+    recurring:    booking.recurring ? `Yes — ${booking.recurWeeks} weeks` : "No",
+    approve_url:  approveUrl,
+    reject_url:   rejectUrl,
+  };
+
+  const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      service_id:  EMAILJS_SERVICE_ID,
+      template_id: EMAILJS_TEMPLATE_ID,
+      user_id:     EMAILJS_PUBLIC_KEY,
+      template_params: params,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`EmailJS error: ${err}`);
+  }
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -675,16 +719,33 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
     setBookings(nextAll);
     await persist(wk, existing);
 
-    // Fire off approval email via serverless function
-    onToast("Booking submitted — approval email sent");
     setModal(null);
+    onToast("Booking submitted — sending approval email…");
 
-    callFunction({
-      action: "request",
-      lab, weekKey: wk, slotKey: key,
+    // Generate token, store it so approve/reject links work
+    const token = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const pendingStorageKey = `pending_${lab}_${wk}_${key}_${isLoans ? "loans" : "inlab"}`;
+    await dbSave(pendingStorageKey, {
+      token, lab, weekKey: wk, slotKey: key,
       booking: pendingBooking,
       bookingType: isLoans ? "loans" : "inlab",
-    }).catch(console.error);
+    });
+
+    const siteUrl = window.location.origin;
+    const approveUrl = `${siteUrl}/?approve=${token}&key=${encodeURIComponent(pendingStorageKey)}`;
+    const rejectUrl  = `${siteUrl}/?reject=${token}&key=${encodeURIComponent(pendingStorageKey)}`;
+    const labInfo = LABS[lab];
+
+    sendApprovalEmail({
+      toEmail:     labInfo.techEmail,
+      labName:     labInfo.name,
+      bookingType: isLoans ? "Equipment Loan" : "In-Lab Booking",
+      booking:     pendingBooking,
+      approveUrl,
+      rejectUrl,
+    })
+      .then(() => onToast("✓ Approval email sent to " + labInfo.techName))
+      .catch((e) => { console.error(e); onToast("Booking saved — email failed, approve via admin login"); });
   };
 
   // Admin: approve pending booking directly in-app
