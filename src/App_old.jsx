@@ -129,322 +129,206 @@ function slotKey(day, periodId) { return `${day}_${periodId}`; }
 const inLabKey = (lab, wk) => `bookings_${lab}_${wk}`;
 const loansKey = (lab, wk) => `loans_${lab}_${wk}`;
 
-function getNextLessonPeriod(periodId) {
-  const idx = PERIODS.findIndex((p) => p.id === periodId);
-  if (idx === -1) return null;
-  for (let i = idx + 1; i < PERIODS.length; i++) {
-    if (PERIODS[i].type === "lesson") return PERIODS[i];
-  }
-  return null;
-}
-
 // ─── CSS ──────────────────────────────────────────────────────────────────────
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  /* ── Theme tokens ── */
-  :root, [data-theme="dark"] {
-    --bg:          #0f1117;
-    --bg2:         #161b2e;
-    --bg3:         #0d111c;
-    --bg4:         #0f1117;
-    --border:      #1e2d4a;
-    --border2:     #2d3748;
-    --text:        #e2e8f0;
-    --text2:       #f0f4ff;
-    --text3:       #94a3b8;
-    --text4:       #64748b;
-    --text5:       #475569;
-    --text6:       #334155;
-    --slot-avail:  #12191f;
-    --slot-avail-h:#1a2736;
-    --slot-avail-b:#1e3a4a;
-    --slot-avail-bh:#2d4f68;
-    --slot-pend:   #1a1f14;
-    --slot-pend-b: #3d5c1e;
-    --slot-pend-h: #1e2418;
-    --break-slot:  #12191f;
-    --break-b:     #1a2532;
-    --recur-bg:    #0f1117;
-    --recur-weeks: #161b2e;
-    --modal-bg:    #161b2e;
-    --admin-bg:    #1e2d4a;
-    --admin-border:#2d4a6a;
-    --admin-color: #7dd3fc;
-    --toast-bg:    #1e2d4a;
-    --toast-border:#2d4a6a;
-    --approval-bg: #161b2e;
-    --home-grad:   radial-gradient(ellipse at 30% 20%, #1a2040 0%, #0f1117 60%);
-    --shadow:      rgba(0,0,0,0.4);
-    --pending-bar: #1a2d1a;
-    --pending-bar-b:#3d5c1e;
-    --pw-bg:       #0f1117;
-    --conflict-del:#200f0f;
-    --del-hover:   #3d1f1f;
-    --infonote-bg: #0f1117;
-  }
-
-  [data-theme="light"] {
-    --bg:          #f1f5f9;
-    --bg2:         #ffffff;
-    --bg3:         #f8fafc;
-    --bg4:         #f1f5f9;
-    --border:      #e2e8f0;
-    --border2:     #cbd5e1;
-    --text:        #1e293b;
-    --text2:       #0f172a;
-    --text3:       #475569;
-    --text4:       #64748b;
-    --text5:       #94a3b8;
-    --text6:       #cbd5e1;
-    --slot-avail:  #f8fafc;
-    --slot-avail-h:#f1f5f9;
-    --slot-avail-b:#cbd5e1;
-    --slot-avail-bh:#94a3b8;
-    --slot-pend:   #f0fdf4;
-    --slot-pend-b: #86efac;
-    --slot-pend-h: #dcfce7;
-    --break-slot:  #f8fafc;
-    --break-b:     #e2e8f0;
-    --recur-bg:    #f8fafc;
-    --recur-weeks: #f1f5f9;
-    --modal-bg:    #ffffff;
-    --admin-bg:    #eff6ff;
-    --admin-border:#bfdbfe;
-    --admin-color: #2563eb;
-    --toast-bg:    #1e293b;
-    --toast-border:#334155;
-    --approval-bg: #ffffff;
-    --home-grad:   radial-gradient(ellipse at 30% 20%, #dbeafe 0%, #f1f5f9 60%);
-    --shadow:      rgba(0,0,0,0.12);
-    --pending-bar: #f0fdf4;
-    --pending-bar-b:#86efac;
-    --pw-bg:       #f8fafc;
-    --conflict-del:#fef2f2;
-    --del-hover:   #fee2e2;
-    --infonote-bg: #f8fafc;
-  }
-
-  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; transition: background 0.2s, color 0.2s; }
+  body { font-family: 'DM Sans', sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
   .app { min-height: 100vh; display: flex; flex-direction: column; }
 
   /* Home */
-  .home { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 48px; padding: 48px 24px; background: var(--home-grad); }
+  .home { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 48px; padding: 48px 24px; background: radial-gradient(ellipse at 30% 20%, #1a2040 0%, #0f1117 60%); }
   .home-title { text-align: center; }
-  .home-title h1 { font-family: 'DM Mono', monospace; font-size: clamp(1.6rem, 4vw, 2.8rem); font-weight: 500; letter-spacing: -0.02em; color: var(--text2); }
-  .home-title p { font-size: 0.95rem; color: var(--text4); margin-top: 8px; font-weight: 300; letter-spacing: 0.05em; text-transform: uppercase; }
+  .home-title h1 { font-family: 'DM Mono', monospace; font-size: clamp(1.6rem, 4vw, 2.8rem); font-weight: 500; letter-spacing: -0.02em; color: #f0f4ff; }
+  .home-title p { font-size: 0.95rem; color: #64748b; margin-top: 8px; font-weight: 300; letter-spacing: 0.05em; text-transform: uppercase; }
   .lab-cards { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }
-  .lab-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 40px 48px; display: flex; flex-direction: column; align-items: center; gap: 16px; cursor: pointer; transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s; width: 220px; flex-shrink: 0; }
-  .lab-card:hover { transform: translateY(-4px); box-shadow: 0 20px 60px var(--shadow); }
+  .lab-card { background: #161b2e; border: 1px solid #1e2d4a; border-radius: 16px; padding: 40px 48px; display: flex; flex-direction: column; align-items: center; gap: 16px; cursor: pointer; transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s; min-width: 200px; }
+  .lab-card:hover { transform: translateY(-4px); box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
   .lab-card .icon { font-size: 3rem; }
-  .lab-card .name { font-family: 'DM Mono', monospace; font-size: 1.1rem; font-weight: 500; color: var(--text2); }
-  .lab-card .sub { font-size: 0.8rem; color: var(--text5); text-transform: uppercase; letter-spacing: 0.08em; }
-  .home-admin-btn { background: none; border: 1px solid var(--border2); color: var(--text5); padding: 8px 18px; border-radius: 8px; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.78rem; transition: all 0.15s; }
-  .home-admin-btn:hover { border-color: var(--text3); color: var(--text3); }
-
-  /* Theme toggle */
-  .theme-toggle { background: none; border: 1px solid var(--border2); color: var(--text4); width: 34px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 1rem; transition: all 0.15s; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .theme-toggle:hover { border-color: var(--text3); color: var(--text2); }
+  .lab-card .name { font-family: 'DM Mono', monospace; font-size: 1.1rem; font-weight: 500; color: #f0f4ff; }
+  .lab-card .sub { font-size: 0.8rem; color: #475569; text-transform: uppercase; letter-spacing: 0.08em; }
+  .home-admin-btn { background: none; border: 1px solid #2d3748; color: #475569; padding: 8px 18px; border-radius: 8px; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.78rem; transition: all 0.15s; }
+  .home-admin-btn:hover { border-color: #64748b; color: #94a3b8; }
 
   /* Header */
-  .header { display: flex; align-items: center; gap: 16px; padding: 16px 24px; background: var(--bg3); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-  .back-btn { background: none; border: 1px solid var(--border2); color: var(--text3); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.8rem; transition: all 0.15s; }
-  .back-btn:hover { border-color: var(--text4); color: var(--text); }
-  .header-title { font-family: 'DM Mono', monospace; font-size: 1.1rem; color: var(--text2); font-weight: 500; }
+  .header { display: flex; align-items: center; gap: 16px; padding: 16px 24px; background: #0d111c; border-bottom: 1px solid #1e2d4a; flex-wrap: wrap; }
+  .back-btn { background: none; border: 1px solid #2d3748; color: #94a3b8; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.8rem; transition: all 0.15s; }
+  .back-btn:hover { border-color: #64748b; color: #e2e8f0; }
+  .header-title { font-family: 'DM Mono', monospace; font-size: 1.1rem; color: #f0f4ff; font-weight: 500; }
   .header-accent { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
-  .admin-badge { display: flex; align-items: center; gap: 6px; background: var(--admin-bg); border: 1px solid var(--admin-border); border-radius: 20px; padding: 4px 12px; font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--admin-color); }
-  .admin-logout { background: none; border: none; color: var(--text5); font-size: 0.75rem; cursor: pointer; margin-left: 4px; padding: 0; transition: color 0.15s; }
+  .admin-badge { display: flex; align-items: center; gap: 6px; background: #1e2d4a; border: 1px solid #2d4a6a; border-radius: 20px; padding: 4px 12px; font-family: 'DM Mono', monospace; font-size: 0.72rem; color: #7dd3fc; }
+  .admin-logout { background: none; border: none; color: #475569; font-size: 0.75rem; cursor: pointer; margin-left: 4px; padding: 0; transition: color 0.15s; }
   .admin-logout:hover { color: #e74c3c; }
   .week-nav { margin-left: auto; display: flex; align-items: center; gap: 12px; }
-  .week-nav button { background: var(--bg2); border: 1px solid var(--border2); color: var(--text3); width: 32px; height: 32px; border-radius: 6px; cursor: pointer; font-size: 1rem; transition: all 0.15s; }
-  .week-nav button:hover { border-color: var(--text4); color: var(--text); }
-  .week-label { font-family: 'DM Mono', monospace; font-size: 0.8rem; color: var(--text4); min-width: 160px; text-align: center; }
+  .week-nav button { background: #161b2e; border: 1px solid #2d3748; color: #94a3b8; width: 32px; height: 32px; border-radius: 6px; cursor: pointer; font-size: 1rem; transition: all 0.15s; }
+  .week-nav button:hover { border-color: #64748b; color: #e2e8f0; }
+  .week-label { font-family: 'DM Mono', monospace; font-size: 0.8rem; color: #64748b; min-width: 160px; text-align: center; }
 
   /* Tabs */
-  .tabs { display: flex; padding: 0 24px; background: var(--bg3); border-bottom: 1px solid var(--border); }
-  .tab-btn { background: none; border: none; border-bottom: 2px solid transparent; color: var(--text4); padding: 12px 20px; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 0.85rem; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; transition: all 0.15s; display: flex; align-items: center; gap: 7px; }
-  .tab-btn:hover { color: var(--text3); }
-  .tab-btn.active { color: var(--text2); border-bottom-color: var(--accent); }
+  .tabs { display: flex; padding: 0 24px; background: #0d111c; border-bottom: 1px solid #1e2d4a; }
+  .tab-btn { background: none; border: none; border-bottom: 2px solid transparent; color: #64748b; padding: 12px 20px; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 0.85rem; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; transition: all 0.15s; display: flex; align-items: center; gap: 7px; }
+  .tab-btn:hover { color: #94a3b8; }
+  .tab-btn.active { color: #f0f4ff; border-bottom-color: var(--accent); }
   .tab-conflict-badge { background: #7c2d12; color: #fca98d; font-size: 0.65rem; font-family: 'DM Mono', monospace; padding: 2px 6px; border-radius: 10px; line-height: 1.4; }
   .tab-pending-badge { background: #1e3a1e; color: #86efac; font-size: 0.65rem; font-family: 'DM Mono', monospace; padding: 2px 6px; border-radius: 10px; line-height: 1.4; }
 
   /* Grid */
   .grid-wrap { flex: 1; overflow: auto; padding: 24px; }
   .timetable { min-width: 700px; border-collapse: collapse; width: 100%; }
-  .timetable th { font-family: 'DM Mono', monospace; font-size: 0.75rem; font-weight: 500; color: var(--text5); padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
-  .timetable th.day-header { text-align: center; color: var(--text3); }
+  .timetable th { font-family: 'DM Mono', monospace; font-size: 0.75rem; font-weight: 500; color: #475569; padding: 8px 12px; text-align: left; border-bottom: 1px solid #1e2d4a; white-space: nowrap; }
+  .timetable th.day-header { text-align: center; color: #94a3b8; }
   .period-label { padding: 10px 14px; vertical-align: top; white-space: nowrap; }
-  .period-label .pl-name { font-family: 'DM Mono', monospace; font-size: 0.78rem; font-weight: 500; color: var(--text4); }
-  .period-label .pl-time { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--text6); margin-top: 2px; }
+  .period-label .pl-name { font-family: 'DM Mono', monospace; font-size: 0.78rem; font-weight: 500; color: #64748b; }
+  .period-label .pl-time { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: #334155; margin-top: 2px; }
 
   /* Slots */
   .slot-cell { padding: 5px; vertical-align: top; min-width: 120px; }
   .slot { height: 58px; border-radius: 8px; display: flex; flex-direction: column; justify-content: center; padding: 6px 10px; cursor: pointer; transition: all 0.15s; position: relative; overflow: hidden; }
-  .slot.available { background: var(--slot-avail); border: 1px dashed var(--slot-avail-b); }
-  .slot.available:hover { background: var(--slot-avail-h); border-color: var(--slot-avail-bh); }
+  .slot.available { background: #12191f; border: 1px dashed #1e3a4a; }
+  .slot.available:hover { background: #1a2736; border-color: #2d4f68; }
   .slot.booked { border-width: 1px; border-style: solid; }
-  .slot.booked:hover { filter: brightness(1.08); }
-  .slot.pending { background: var(--slot-pend); border: 1px dashed var(--slot-pend-b); cursor: default; }
-  .slot.pending:hover { background: var(--slot-pend-h); }
-  .slot-avail-text { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: var(--slot-avail-b); text-align: center; }
-  .slot-teacher { font-size: 0.75rem; font-weight: 600; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .slot.booked:hover { filter: brightness(1.2); }
+  .slot.pending { background: #1a1f14; border: 1px dashed #3d5c1e; cursor: default; }
+  .slot.pending:hover { background: #1e2418; }
+  .slot-avail-text { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: #1e3a4a; text-align: center; }
+  .slot-teacher { font-size: 0.75rem; font-weight: 600; color: #f0f4ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .slot-class { font-family: 'DM Mono', monospace; font-size: 0.68rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .slot-subject { font-size: 0.65rem; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .slot-subject { font-size: 0.65rem; color: rgba(255,255,255,0.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .slot-badges { position: absolute; top: 4px; right: 5px; display: flex; align-items: center; gap: 3px; }
   .slot-recur { font-size: 0.6rem; opacity: 0.6; line-height: 1; }
   .slot-conflict { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: #f97316; }
   .slot-conflict-icon { font-size: 0.62rem; line-height: 1; color: #f97316; }
-  .pending-label { font-family: 'DM Mono', monospace; font-size: 0.6rem; color: #16a34a; text-align: center; letter-spacing: 0.05em; }
-  .pending-teacher { font-size: 0.7rem; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pending-label { font-family: 'DM Mono', monospace; font-size: 0.6rem; color: #86efac; text-align: center; letter-spacing: 0.05em; }
+  .pending-teacher { font-size: 0.7rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .conflict-avail-hint { display: flex; align-items: center; justify-content: center; gap: 5px; flex-direction: column; }
   .conflict-pill { display: inline-flex; align-items: center; gap: 4px; background: rgba(249,115,22,0.15); border: 1px solid rgba(249,115,22,0.35); border-radius: 4px; padding: 1px 6px; font-size: 0.6rem; color: #f97316; font-family: 'DM Mono', monospace; white-space: nowrap; margin-top: 2px; }
 
   /* Break slots */
   .break-row td { background: transparent; }
-  .break-row .period-label .pl-name { color: var(--text6); }
-  .break-slot { height: 36px; border-radius: 6px; background: var(--break-slot); border: 1px dashed var(--break-b); display: flex; align-items: center; padding: 0 10px; cursor: pointer; transition: all 0.15s; position: relative; overflow: hidden; gap: 6px; }
-  .break-slot:hover { background: var(--slot-avail-h); border-color: var(--slot-avail-bh); }
+  .break-row .period-label .pl-name { color: #334155; }
+  .break-slot { height: 36px; border-radius: 6px; background: #12191f; border: 1px dashed #1a2532; display: flex; align-items: center; padding: 0 10px; cursor: pointer; transition: all 0.15s; position: relative; overflow: hidden; gap: 6px; }
+  .break-slot:hover { background: #1a2736; border-color: #2d4f68; }
   .break-slot.booked { border-style: solid; }
-  .break-slot.pending { border-color: var(--slot-pend-b); cursor: default; }
+  .break-slot.pending { border-color: #3d5c1e; cursor: default; }
   .break-slot-icons { margin-left: auto; display: flex; align-items: center; gap: 4px; }
   .break-recur { font-size: 0.6rem; opacity: 0.6; }
 
   /* Legend */
-  .legend { display: flex; gap: 20px; padding: 12px 24px; border-top: 1px solid var(--border); background: var(--bg3); flex-wrap: wrap; align-items: center; }
-  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: var(--text5); }
+  .legend { display: flex; gap: 20px; padding: 12px 24px; border-top: 1px solid #1e2d4a; background: #0d111c; flex-wrap: wrap; align-items: center; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: #475569; }
   .leg-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
   .leg-conflict { width: 10px; height: 3px; border-radius: 2px; background: #f97316; flex-shrink: 0; }
-  .leg-pending { width: 10px; height: 10px; border-radius: 3px; background: var(--slot-pend); border: 1px dashed var(--slot-pend-b); flex-shrink: 0; }
+  .leg-pending { width: 10px; height: 10px; border-radius: 3px; background: #1a1f14; border: 1px dashed #3d5c1e; flex-shrink: 0; }
 
   /* Saving */
-  .saving-indicator { font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--text4); display: flex; align-items: center; gap: 6px; }
-  .saving-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text4); animation: pulse 1s infinite; }
+  .saving-indicator { font-family: 'DM Mono', monospace; font-size: 0.72rem; color: #64748b; display: flex; align-items: center; gap: 6px; }
+  .saving-dot { width: 6px; height: 6px; border-radius: 50%; background: #64748b; animation: pulse 1s infinite; }
   .saving-dot.saved { background: #10b981; animation: none; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 
   /* Loading */
-  .loading-screen { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; color: var(--text5); font-family: 'DM Mono', monospace; font-size: 0.85rem; }
-  .loading-spinner { width: 32px; height: 32px; border: 2px solid var(--border); border-top-color: var(--accent, #3b82f6); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  .loading-screen { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; color: #475569; font-family: 'DM Mono', monospace; font-size: 0.85rem; }
+  .loading-spinner { width: 32px; height: 32px; border: 2px solid #1e2d4a; border-top-color: var(--accent, #3b82f6); border-radius: 50%; animation: spin 0.7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* Modal */
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 24px; backdrop-filter: blur(4px); animation: fadeIn 0.15s ease; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 24px; backdrop-filter: blur(4px); animation: fadeIn 0.15s ease; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  .modal { background: var(--modal-bg); border: 1px solid var(--border2); border-radius: 16px; width: 100%; max-width: 540px; max-height: 90vh; overflow-y: auto; animation: slideUp 0.2s ease; }
+  .modal { background: #161b2e; border: 1px solid #2d3748; border-radius: 16px; width: 100%; max-width: 540px; max-height: 90vh; overflow-y: auto; animation: slideUp 0.2s ease; }
   @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-  .modal-header { padding: 20px 24px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; }
-  .modal-title { font-family: 'DM Mono', monospace; font-size: 1rem; color: var(--text2); font-weight: 500; }
-  .modal-sub { font-size: 0.78rem; color: var(--text5); margin-top: 4px; }
-  .modal-close { background: none; border: none; color: var(--text5); font-size: 1.4rem; cursor: pointer; line-height: 1; padding: 0 4px; transition: color 0.15s; }
-  .modal-close:hover { color: var(--text); }
+  .modal-header { padding: 20px 24px 16px; border-bottom: 1px solid #1e2d4a; display: flex; align-items: flex-start; justify-content: space-between; }
+  .modal-title { font-family: 'DM Mono', monospace; font-size: 1rem; color: #f0f4ff; font-weight: 500; }
+  .modal-sub { font-size: 0.78rem; color: #475569; margin-top: 4px; }
+  .modal-close { background: none; border: none; color: #475569; font-size: 1.4rem; cursor: pointer; line-height: 1; padding: 0 4px; transition: color 0.15s; }
+  .modal-close:hover { color: #e2e8f0; }
   .modal-body { padding: 24px; display: flex; flex-direction: column; gap: 18px; }
-  .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
+  .modal-footer { padding: 16px 24px; border-top: 1px solid #1e2d4a; display: flex; gap: 10px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
 
-  /* Pending info */
-  .pending-info-box { background: var(--bg4); border: 1px solid var(--slot-pend-b); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+  /* Pending detail modal */
+  .pending-info-box { background: #0f1117; border: 1px solid #3d5c1e; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
   .pending-info-row { display: flex; gap: 12px; font-size: 0.85rem; }
-  .pending-info-label { color: var(--text4); font-family: 'DM Mono', monospace; font-size: 0.72rem; min-width: 100px; }
-  .pending-info-value { color: var(--text); }
-  .pending-status-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--pending-bar); border: 1px solid var(--pending-bar-b); border-radius: 20px; padding: 4px 12px; font-family: 'DM Mono', monospace; font-size: 0.72rem; color: #16a34a; margin-bottom: 4px; }
+  .pending-info-label { color: #64748b; font-family: 'DM Mono', monospace; font-size: 0.72rem; min-width: 100px; }
+  .pending-info-value { color: #e2e8f0; }
+  .pending-status-badge { display: inline-flex; align-items: center; gap: 6px; background: #1a2d1a; border: 1px solid #3d5c1e; border-radius: 20px; padding: 4px 12px; font-family: 'DM Mono', monospace; font-size: 0.72rem; color: #86efac; margin-bottom: 4px; }
 
-  /* Admin approve/reject */
+  /* Admin approve/reject in modal */
   .admin-actions { display: flex; gap: 10px; margin-top: 4px; }
   .btn-approve { background: #10b981; color: #fff; border: none; padding: 9px 20px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: filter 0.15s; }
   .btn-approve:hover { filter: brightness(1.15); }
-  .btn-reject-action { background: none; border: 1px solid #fca5a5; color: #e74c3c; padding: 9px 20px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; }
-  .btn-reject-action:hover { background: var(--del-hover); }
+  .btn-reject-action { background: none; border: 1px solid #3d1f1f; color: #e74c3c; padding: 9px 20px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; }
+  .btn-reject-action:hover { background: #3d1f1f; }
 
   /* Conflict warning */
-  .conflict-warning { background: rgba(249,115,22,0.08); border: 1px solid rgba(249,115,22,0.3); border-radius: 8px; padding: 10px 14px; font-size: 0.8rem; color: #c2410c; line-height: 1.5; display: flex; gap: 10px; align-items: flex-start; }
+  .conflict-warning { background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.3); border-radius: 8px; padding: 10px 14px; font-size: 0.8rem; color: #fdba74; line-height: 1.5; display: flex; gap: 10px; align-items: flex-start; }
   .conflict-warning-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
 
   /* Fields */
   .field-group { display: flex; flex-direction: column; gap: 6px; }
-  .field-label { font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--text4); text-transform: uppercase; letter-spacing: 0.06em; }
+  .field-label { font-family: 'DM Mono', monospace; font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; }
   .field-label .required { color: var(--accent); margin-left: 4px; }
-  .field-input, .field-textarea { background: var(--bg4); border: 1px solid var(--border2); color: var(--text); border-radius: 8px; padding: 10px 14px; font-family: 'DM Sans', sans-serif; font-size: 0.9rem; width: 100%; transition: border-color 0.15s; outline: none; }
+  .field-input, .field-textarea { background: #0f1117; border: 1px solid #2d3748; color: #f0f4ff; border-radius: 8px; padding: 10px 14px; font-family: 'DM Sans', sans-serif; font-size: 0.9rem; width: 100%; transition: border-color 0.15s; outline: none; }
   .field-input:focus, .field-textarea:focus { border-color: var(--accent); }
   .field-textarea { resize: vertical; min-height: 72px; }
   .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .divider { font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--text6); text-transform: uppercase; letter-spacing: 0.1em; display: flex; align-items: center; gap: 12px; }
-  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .divider { font-family: 'DM Mono', monospace; font-size: 0.7rem; color: #334155; text-transform: uppercase; letter-spacing: 0.1em; display: flex; align-items: center; gap: 12px; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #1e2d4a; }
 
   /* Colour picker */
   .color-grid { display: flex; flex-wrap: wrap; gap: 8px; }
   .color-swatch { width: 28px; height: 28px; border-radius: 6px; cursor: pointer; border: 2px solid transparent; transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s; flex-shrink: 0; }
   .color-swatch:hover { transform: scale(1.18); }
-  .color-swatch.selected { border-color: #334155; transform: scale(1.18); box-shadow: 0 0 0 3px rgba(0,0,0,0.15); }
+  .color-swatch.selected { border-color: #fff; transform: scale(1.18); box-shadow: 0 0 0 3px rgba(255,255,255,0.15); }
 
   /* Recurring */
-  .recur-section { background: var(--recur-bg); border: 1px solid var(--border2); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .recur-section { background: #0f1117; border: 1px solid #2d3748; border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
   .recur-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
-  .toggle-track { width: 38px; height: 20px; border-radius: 10px; background: var(--border2); position: relative; transition: background 0.2s; flex-shrink: 0; }
+  .toggle-track { width: 38px; height: 20px; border-radius: 10px; background: #2d3748; position: relative; transition: background 0.2s; flex-shrink: 0; }
   .toggle-track.on { background: var(--accent); }
   .toggle-thumb { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left 0.2s; }
   .toggle-track.on .toggle-thumb { left: 21px; }
-  .recur-label { font-size: 0.88rem; color: var(--text3); }
+  .recur-label { font-size: 0.88rem; color: #94a3b8; }
   .recur-options { display: flex; flex-direction: column; gap: 8px; }
   .recur-row { display: flex; align-items: center; gap: 10px; }
-  .recur-hint { font-size: 0.75rem; color: var(--text5); font-family: 'DM Mono', monospace; }
-  .recur-weeks-input { background: var(--recur-weeks); border: 1px solid var(--border2); color: var(--text); border-radius: 6px; padding: 6px 10px; width: 68px; font-size: 0.88rem; outline: none; transition: border-color 0.15s; font-family: 'DM Sans', sans-serif; text-align: center; }
+  .recur-hint { font-size: 0.75rem; color: #475569; font-family: 'DM Mono', monospace; }
+  .recur-weeks-input { background: #161b2e; border: 1px solid #2d3748; color: #f0f4ff; border-radius: 6px; padding: 6px 10px; width: 68px; font-size: 0.88rem; outline: none; transition: border-color 0.15s; font-family: 'DM Sans', sans-serif; text-align: center; }
   .recur-weeks-input:focus { border-color: var(--accent); }
 
   /* Buttons */
-  .btn-cancel { background: none; border: 1px solid var(--border2); color: var(--text3); padding: 9px 20px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; }
-  .btn-cancel:hover { border-color: var(--text4); color: var(--text); }
-  .btn-delete { background: none; border: 1px solid #fca5a5; color: #e74c3c; padding: 9px 20px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; margin-right: auto; }
-  .btn-delete:hover { background: var(--del-hover); }
+  .btn-cancel { background: none; border: 1px solid #2d3748; color: #94a3b8; padding: 9px 20px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; }
+  .btn-cancel:hover { border-color: #64748b; color: #e2e8f0; }
+  .btn-delete { background: none; border: 1px solid #3d1f1f; color: #e74c3c; padding: 9px 20px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; margin-right: auto; }
+  .btn-delete:hover { background: #3d1f1f; }
   .btn-save { color: #fff; border: none; padding: 9px 24px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: filter 0.15s; font-family: 'DM Sans', sans-serif; }
-  .btn-save:hover:not(:disabled) { filter: brightness(1.1); }
+  .btn-save:hover:not(:disabled) { filter: brightness(1.15); }
   .btn-save:disabled { opacity: 0.35; cursor: not-allowed; }
   .recur-del-wrap { margin-right: auto; display: flex; flex-direction: column; gap: 6px; width: 100%; }
-  .recur-del-title { font-size: 0.78rem; color: var(--text4); font-family: 'DM Mono', monospace; margin-bottom: 2px; }
+  .recur-del-title { font-size: 0.78rem; color: #64748b; font-family: 'DM Mono', monospace; margin-bottom: 2px; }
   .recur-del-opts { display: flex; gap: 8px; flex-wrap: wrap; }
-  .recur-del-opt { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border2); cursor: pointer; transition: all 0.15s; font-size: 0.82rem; color: var(--text3); white-space: nowrap; }
-  .recur-del-opt:hover { border-color: #e74c3c; color: var(--text); background: var(--conflict-del); }
-
-  /* Double period */
-  .slot-double { font-size: 0.62rem; color: var(--text4); font-family: 'DM Mono', monospace; }
-  .double-note { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.25); border-radius: 8px; padding: 8px 12px; font-size: 0.78rem; color: #60a5fa; line-height: 1.5; }
-  .double-conflict-note { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 8px 12px; font-size: 0.78rem; color: #f87171; line-height: 1.5; }
+  .recur-del-opt { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 8px; border: 1px solid #2d3748; cursor: pointer; transition: all 0.15s; font-size: 0.82rem; color: #94a3b8; white-space: nowrap; }
+  .recur-del-opt:hover { border-color: #e74c3c; color: #f0f4ff; background: #200f0f; }
 
   /* Admin login modal */
-  .admin-login-modal { background: var(--modal-bg); border: 1px solid var(--border2); border-radius: 16px; width: 100%; max-width: 380px; padding: 32px; animation: slideUp 0.2s ease; }
-  .admin-login-title { font-family: 'DM Mono', monospace; font-size: 1rem; color: var(--text2); font-weight: 500; margin-bottom: 6px; }
-  .admin-login-sub { font-size: 0.8rem; color: var(--text5); margin-bottom: 24px; }
+  .admin-login-modal { background: #161b2e; border: 1px solid #2d3748; border-radius: 16px; width: 100%; max-width: 380px; padding: 32px; animation: slideUp 0.2s ease; }
+  .admin-login-title { font-family: 'DM Mono', monospace; font-size: 1rem; color: #f0f4ff; font-weight: 500; margin-bottom: 6px; }
+  .admin-login-sub { font-size: 0.8rem; color: #475569; margin-bottom: 24px; }
   .admin-error { font-size: 0.8rem; color: #e74c3c; margin-top: 8px; font-family: 'DM Mono', monospace; }
 
   /* Change password */
-  .change-pw-section { background: var(--pw-bg); border: 1px solid var(--border2); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-  .change-pw-title { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--text4); text-transform: uppercase; letter-spacing: 0.06em; }
+  .change-pw-section { background: #0f1117; border: 1px solid #2d3748; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .change-pw-title { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; }
 
-  /* Approval screen */
+  /* Approval result screen */
   .approval-screen { flex: 1; display: flex; align-items: center; justify-content: center; padding: 48px 24px; }
-  .approval-card { background: var(--approval-bg); border: 1px solid var(--border2); border-radius: 16px; padding: 40px; max-width: 460px; width: 100%; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .approval-card { background: #161b2e; border: 1px solid #2d3748; border-radius: 16px; padding: 40px; max-width: 460px; width: 100%; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px; }
   .approval-icon { font-size: 3rem; }
-  .approval-title { font-family: 'DM Mono', monospace; font-size: 1.1rem; color: var(--text2); }
-  .approval-sub { font-size: 0.85rem; color: var(--text4); line-height: 1.6; }
+  .approval-title { font-family: 'DM Mono', monospace; font-size: 1.1rem; color: #f0f4ff; }
+  .approval-sub { font-size: 0.85rem; color: #64748b; line-height: 1.6; }
   .approval-go-btn { background: var(--accent); color: #fff; border: none; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 500; margin-top: 8px; transition: filter 0.15s; }
-  .approval-go-btn:hover { filter: brightness(1.1); }
+  .approval-go-btn:hover { filter: brightness(1.15); }
 
   /* Toast */
-  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--toast-bg); border: 1px solid var(--toast-border); color: #f1f5f9; padding: 12px 20px; border-radius: 10px; font-size: 0.85rem; z-index: 2000; animation: fadeIn 0.2s ease; white-space: nowrap; }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1e2d4a; border: 1px solid #2d4a6a; color: #e2e8f0; padding: 12px 20px; border-radius: 10px; font-size: 0.85rem; z-index: 2000; animation: fadeIn 0.2s ease; white-space: nowrap; }
 `;
-
-
-// ─── Theme ────────────────────────────────────────────────────────────────────
-function useTheme() {
-  const [theme, setTheme] = useState(() => localStorage.getItem("vas-theme") || "dark");
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("vas-theme", theme);
-  }, [theme]);
-
-  const toggle = () => setTheme((t) => t === "dark" ? "light" : "dark");
-  return { theme, toggle };
-}
 
 // ─── Tiny shared components ───────────────────────────────────────────────────
 
@@ -579,12 +463,11 @@ function ChangePasswordPanel({ adminPassword, onToast }) {
 
 // ─── Booking Modal ────────────────────────────────────────────────────────────
 
-function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave, onClose, onDelete, onAdminApprove, onAdminReject, isLoans, isAdmin, weekBookings }) {
+function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave, onClose, onDelete, onAdminApprove, onAdminReject, isLoans, isAdmin }) {
   const isNew       = !booking?.teacher;
   const isPending   = booking?.status === "pending";
   const isConfirmed = booking?.status === "confirmed";
   const isRecurring = !!booking?.recurId;
-  const isDoubleSecond = !!booking?.isDoubleSecond;
 
   const [form, setForm] = useState({
     teacher: "", class: "", subject: "",
@@ -594,15 +477,9 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
     ...booking,
   });
   const [delMode, setDelMode] = useState(false);
-  const [doubleMode, setDoubleMode] = useState(false);
-
-  const nextPeriod       = isNew ? getNextLessonPeriod(period.id) : null;
-  const nextKey          = nextPeriod ? slotKey(day, nextPeriod.id) : null;
-  const nextAlreadyBooked = nextKey && weekBookings?.[nextKey];
 
   const upd = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-  const canSave = form.teacher.trim() && form.class.trim() && form.subject.trim()
-    && !(doubleMode && nextAlreadyBooked);
+  const canSave = form.teacher.trim() && form.class.trim() && form.subject.trim();
 
   // Pending view (non-admin just sees info)
   if (isPending && !isAdmin) {
@@ -612,11 +489,7 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
           <div className="modal-header">
             <div>
               <div className="modal-title">Pending Booking</div>
-              <div className="modal-sub">
-                {day} · {period.label} · {period.time}
-                {isDoubleSecond && <span style={{ marginLeft: 8, color: accentColor, fontSize: "0.72rem" }}>↔ 2nd period</span>}
-                {!isDoubleSecond && booking?.doublePeriodLabel && <span style={{ marginLeft: 8, color: accentColor, fontSize: "0.72rem" }}>↔ + {booking.doublePeriodLabel}</span>}
-              </div>
+              <div className="modal-sub">{day} · {period.label} · {period.time}</div>
             </div>
             <button className="modal-close" onClick={onClose}>×</button>
           </div>
@@ -654,11 +527,7 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
           <div className="modal-header">
             <div>
               <div className="modal-title">Pending — Admin Review</div>
-              <div className="modal-sub">
-                {day} · {period.label} · {period.time}
-                {isDoubleSecond && <span style={{ marginLeft: 8, color: accentColor, fontSize: "0.72rem" }}>↔ 2nd period</span>}
-                {!isDoubleSecond && booking?.doublePeriodLabel && <span style={{ marginLeft: 8, color: accentColor, fontSize: "0.72rem" }}>↔ + {booking.doublePeriodLabel}</span>}
-              </div>
+              <div className="modal-sub">{day} · {period.label} · {period.time}</div>
             </div>
             <button className="modal-close" onClick={onClose}>×</button>
           </div>
@@ -701,9 +570,6 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
             </div>
             <div className="modal-sub">
               {day} · {period.label} · {period.time}
-              {isNew && doubleMode && nextPeriod && <span style={{ color: accentColor }}> → {nextPeriod.label} · {nextPeriod.time}</span>}
-              {!isNew && isDoubleSecond && <span style={{ marginLeft: 8, color: accentColor, fontSize: "0.72rem" }}>↔ 2nd period</span>}
-              {!isNew && !isDoubleSecond && booking?.doublePeriodLabel && <span style={{ marginLeft: 8, color: accentColor, fontSize: "0.72rem" }}>↔ + {booking.doublePeriodLabel}</span>}
               {isRecurring && <span style={{ marginLeft: 8, color: accentColor, fontSize: "0.72rem" }}>↻ Recurring</span>}
             </div>
           </div>
@@ -744,23 +610,6 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
           </div>
 
           <ColorPicker value={form.color} onChange={(hex) => setForm((f) => ({ ...f, color: hex }))} />
-
-          {isNew && nextPeriod && (
-            <div className="recur-section">
-              <Toggle on={doubleMode} onToggle={() => setDoubleMode((v) => !v)}
-                label={`Double period (continues into ${nextPeriod.label})`} />
-              {doubleMode && nextAlreadyBooked && (
-                <div className="double-conflict-note">
-                  ⚠ {nextPeriod.label} is already booked and cannot be added as a double period.
-                </div>
-              )}
-              {doubleMode && !nextAlreadyBooked && (
-                <div className="double-note">
-                  Both {period.label} and {nextPeriod.label} will be marked pending and confirmed together with a single approval email.
-                </div>
-              )}
-            </div>
-          )}
 
           {isNew && (
             <div className="recur-section">
@@ -817,7 +666,7 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
               <div className="recur-del-title">Remove which bookings?</div>
               <div className="recur-del-opts">
                 <div className="recur-del-opt" onClick={() => onDelete("single")}>✕ This week only</div>
-                {(isRecurring || (booking?.recurring && booking?.recurWeeks > 1)) && <div className="recur-del-opt" onClick={() => onDelete("all")}>✕✕ All recurring</div>}
+                {isRecurring && <div className="recur-del-opt" onClick={() => onDelete("all")}>✕✕ All recurring</div>}
               </div>
             </div>
           )}
@@ -825,7 +674,7 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
             {delMode ? "Back" : "Cancel"}
           </button>
           {!delMode && (
-            <button className="btn-save" style={{ background: form.color }} disabled={!canSave} onClick={() => onSave({ ...form, double: doubleMode })}>
+            <button className="btn-save" style={{ background: form.color }} disabled={!canSave} onClick={() => onSave(form)}>
               {isNew ? "Submit for Approval" : "Save Changes"}
             </button>
           )}
@@ -854,51 +703,22 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
   // Submit new booking → pending state + email
   const handleSave = async (form) => {
     const { day, period } = modal;
-    const { double, recurring, recurWeeks, ...rest } = form;
     const key = slotKey(day, period.id);
+    const nextAll = { ...bookings };
+    const existing = { ...(nextAll[wk] || {}) };
 
-    // For double period, find the next lesson period
-    const nextPeriod = double ? getNextLessonPeriod(period.id) : null;
-    const key2 = nextPeriod ? slotKey(day, nextPeriod.id) : null;
-    const doubleId = double && nextPeriod ? `double_${Date.now()}_${key}` : undefined;
-
+    // Write pending slot immediately so slot is blocked
+    const { recurring, recurWeeks, ...rest } = form;
     const pendingBooking = {
       ...rest, status: "pending",
       day, periodLabel: period.label, periodTime: period.time,
       recurring, recurWeeks,
-      ...(doubleId ? { doubleId, doublePartnerKey: key2, doublePeriodLabel: nextPeriod.label, doublePeriodTime: nextPeriod.time } : {}),
     };
-
-    const pendingBooking2 = key2 ? {
-      ...rest, status: "pending",
-      day, periodLabel: nextPeriod.label, periodTime: nextPeriod.time,
-      recurring, recurWeeks,
-      doubleId, isDoubleSecond: true, doublePartnerKey: key,
-    } : null;
-
-    const nextAll = { ...bookings };
-
-    if (recurring && recurWeeks > 1) {
-      // Write ALL recurring weeks as pending immediately
-      for (let i = 0; i < recurWeeks; i++) {
-        const wkDate = addWeeks(getMondayOfWeek(new Date(wk)), i);
-        const wkk = weekKey(wkDate);
-        const { data: wkData } = await supabase.from("bookings").select("data").eq("storage_key", dbKeyFn(lab, wkk)).single();
-        const wkSlots = { ...(wkData?.data || {}) };
-        wkSlots[key] = pendingBooking;
-        if (pendingBooking2) wkSlots[key2] = pendingBooking2;
-        nextAll[wkk] = wkSlots;
-        await persist(wkk, wkSlots);
-      }
-    } else {
-      const existing = { ...(nextAll[wk] || {}) };
-      existing[key] = pendingBooking;
-      if (pendingBooking2) existing[key2] = pendingBooking2;
-      nextAll[wk] = existing;
-      await persist(wk, existing);
-    }
-
+    existing[key] = pendingBooking;
+    nextAll[wk] = existing;
     setBookings(nextAll);
+    await persist(wk, existing);
+
     setModal(null);
     onToast("Booking submitted — sending approval email…");
 
@@ -909,7 +729,6 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
       token, lab, weekKey: wk, slotKey: key,
       booking: pendingBooking,
       bookingType: isLoans ? "loans" : "inlab",
-      ...(key2 ? { doubleSlotKey: key2 } : {}),
     });
 
     const siteUrl = window.location.origin;
@@ -917,20 +736,11 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
     const rejectUrl  = `${siteUrl}/?reject=${token}&key=${encodeURIComponent(pendingStorageKey)}`;
     const labInfo = LABS[lab];
 
-    // Build email booking — combine period labels for double
-    const emailBooking = {
-      ...pendingBooking,
-      periodLabel: double && nextPeriod ? `${period.label} + ${nextPeriod.label}` : period.label,
-      periodTime:  double && nextPeriod
-        ? `${period.time.split("–")[0].trim()} – ${nextPeriod.time.split("–")[1].trim()}`
-        : period.time,
-    };
-
     sendApprovalEmail({
       toEmail:     labInfo.techEmail,
       labName:     labInfo.name,
       bookingType: isLoans ? "Equipment Loan" : "In-Lab Booking",
-      booking:     emailBooking,
+      booking:     pendingBooking,
       approveUrl,
       rejectUrl,
     })
@@ -945,36 +755,22 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
     const bk = getBooking(day, period.id);
     const nextAll = { ...bookings };
 
-    // Collect all slot keys to approve (include double partner if present)
-    const keysToApprove = [key];
-    if (bk.doublePartnerKey) keysToApprove.push(bk.doublePartnerKey);
-
     if (bk.recurring && bk.recurWeeks > 1) {
       const recurId = `recur_${Date.now()}_${key}`;
       for (let i = 0; i < bk.recurWeeks; i++) {
         const wkDate = addWeeks(getMondayOfWeek(new Date(wk)), i);
         const wkk = weekKey(wkDate);
         const { data: wkData } = await supabase.from("bookings").select("data").eq("storage_key", dbKeyFn(lab, wkk)).single();
-        const wkSlots = { ...(wkData?.data || {}) };
-        for (const k of keysToApprove) {
-          const slotBk = wkSlots[k];
-          if (slotBk) {
-            const { recurring, recurWeeks, status, pendingKey, ...rest } = slotBk;
-            wkSlots[k] = { ...rest, recurId, status: "confirmed" };
-          }
-        }
+        const wkSlots = wkData?.data || {};
+        const { recurring, recurWeeks, status, pendingKey, ...rest } = bk;
+        wkSlots[key] = { ...rest, recurId, status: "confirmed" };
         nextAll[wkk] = wkSlots;
         await persist(wkk, wkSlots);
       }
     } else {
       const existing = { ...(nextAll[wk] || {}) };
-      for (const k of keysToApprove) {
-        const slotBk = existing[k];
-        if (slotBk) {
-          const { recurring, recurWeeks, status, pendingKey, ...rest } = slotBk;
-          existing[k] = { ...rest, status: "confirmed" };
-        }
-      }
+      const { recurring, recurWeeks, status, pendingKey, ...rest } = bk;
+      existing[key] = { ...rest, status: "confirmed" };
       nextAll[wk] = existing;
       await persist(wk, existing);
     }
@@ -988,30 +784,12 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
   const handleAdminReject = async () => {
     const { day, period } = modal;
     const key = slotKey(day, period.id);
-    const bk = getBooking(day, period.id);
     const nextAll = { ...bookings };
-
-    const keysToDelete = [key];
-    if (bk?.doublePartnerKey) keysToDelete.push(bk.doublePartnerKey);
-
-    if (bk?.recurring && bk?.recurWeeks > 1) {
-      for (let i = 0; i < bk.recurWeeks; i++) {
-        const wkDate = addWeeks(getMondayOfWeek(new Date(wk)), i);
-        const wkk = weekKey(wkDate);
-        const { data: wkData } = await supabase.from("bookings").select("data").eq("storage_key", dbKeyFn(lab, wkk)).single();
-        const wkSlots = { ...(wkData?.data || {}) };
-        for (const k of keysToDelete) delete wkSlots[k];
-        nextAll[wkk] = wkSlots;
-        await persist(wkk, wkSlots);
-      }
-    } else {
-      const existing = { ...(nextAll[wk] || {}) };
-      for (const k of keysToDelete) delete existing[k];
-      nextAll[wk] = existing;
-      await persist(wk, existing);
-    }
-
+    const existing = { ...(nextAll[wk] || {}) };
+    delete existing[key];
+    nextAll[wk] = existing;
     setBookings(nextAll);
+    await persist(wk, existing);
     setModal(null);
     onToast("Booking rejected and slot released");
   };
@@ -1023,35 +801,18 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
     const bk = getBooking(day, period.id);
     const nextAll = { ...bookings };
 
-    const keysToDelete = [key];
-    if (bk?.doublePartnerKey) keysToDelete.push(bk.doublePartnerKey);
-
-    if (mode === "all") {
-      if (bk?.recurId) {
-        // Confirmed recurring: delete by recurId
-        for (const [wkk, slots] of Object.entries(nextAll)) {
+    if (mode === "all" && bk?.recurId) {
+      for (const [wkk, slots] of Object.entries(nextAll)) {
+        if (slots[key]?.recurId === bk.recurId) {
           const updated = { ...slots };
-          let changed = false;
-          for (const k of keysToDelete) {
-            if (slots[k]?.recurId === bk.recurId) { delete updated[k]; changed = true; }
-          }
-          if (changed) { nextAll[wkk] = updated; await persist(wkk, updated); }
-        }
-      } else if (bk?.recurring && bk?.recurWeeks > 1) {
-        // Pending recurring: delete all weeks
-        for (let i = 0; i < bk.recurWeeks; i++) {
-          const wkDate = addWeeks(getMondayOfWeek(new Date(wk)), i);
-          const wkk = weekKey(wkDate);
-          const { data: wkData } = await supabase.from("bookings").select("data").eq("storage_key", dbKeyFn(lab, wkk)).single();
-          const wkSlots = { ...(wkData?.data || {}) };
-          for (const k of keysToDelete) delete wkSlots[k];
-          nextAll[wkk] = wkSlots;
-          await persist(wkk, wkSlots);
+          delete updated[key];
+          nextAll[wkk] = updated;
+          await persist(wkk, updated);
         }
       }
     } else {
       const existing = { ...(nextAll[wk] || {}) };
-      for (const k of keysToDelete) delete existing[k];
+      delete existing[key];
       nextAll[wk] = existing;
       await persist(wk, existing);
     }
@@ -1114,7 +875,6 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                           )}
                           <div className="break-slot-icons">
                             {bk?.recurId && <span className="break-recur">↻</span>}
-                            {bk?.doubleId && <span className="break-recur">↔</span>}
                             {cross && <span style={{ fontSize: "0.7rem", color: "#f97316" }}>⚠</span>}
                           </div>
                         </div>
@@ -1135,7 +895,6 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                                 <div className="slot-badges">
                                   {cross && <span className="slot-conflict-icon">⚠</span>}
                                   {bk.recurId && <span className="slot-recur">↻</span>}
-                                  {bk.doubleId && <span className="slot-double">↔</span>}
                                 </div>
                                 <div className="slot-teacher">{bk.teacher}</div>
                                 <div className="slot-class" style={{ color }}>{bk.class}</div>
@@ -1165,7 +924,6 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
         <div className="legend-item"><div className="leg-dot" style={{ background: accentColor + "33", border: `1px solid ${accentColor}` }} />Confirmed</div>
         <div className="legend-item"><div className="leg-pending" />Pending</div>
         <div className="legend-item"><span style={{ fontSize: "0.85rem" }}>↻</span> Recurring</div>
-        <div className="legend-item"><span style={{ fontSize: "0.85rem" }}>↔</span> Double period</div>
         <div className="legend-item"><div className="leg-conflict" />{isLoans ? "In-lab conflict" : "Loan conflict"}</div>
         <div style={{ marginLeft: "auto", color: "#334155", fontSize: "0.7rem", fontFamily: "DM Mono, monospace" }}>
           Click any slot to book or view details
@@ -1186,7 +944,6 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
           onAdminReject={handleAdminReject}
           isLoans={isLoans}
           isAdmin={isAdmin}
-          weekBookings={bookings[wk] || {}}
         />
       )}
     </>
@@ -1262,7 +1019,7 @@ function ApprovalScreen({ action, token, pendingKey, accentColor }) {
 
 // ─── Lab View ─────────────────────────────────────────────────────────────────
 
-function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onToggleTheme }) {
+function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout }) {
   const labInfo = LABS[lab];
   const [monday, setMonday]       = useState(() => getMondayOfWeek(new Date()));
   const [inLabBookings, setInLab] = useState({});
@@ -1323,9 +1080,6 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
           </span>
         )}
         <SavingIndicator state={saveState} />
-        <button className="theme-toggle" onClick={onToggleTheme} title="Toggle light/dark mode">
-          {theme === "dark" ? "☀️" : "🌙"}
-        </button>
         {isAdmin ? (
           <div className="admin-badge">
             🔑 Admin
@@ -1400,7 +1154,6 @@ export default function App() {
   const [isAdmin, setIsAdmin]       = useState(false);
   const [adminPassword, setAdminPw] = useState("");
   const [showAdminLogin, setShowAdminLogin] = useState(false);
-  const { theme, toggle } = useTheme();
 
   // Check for approval/reject URL params on load
   const params = new URLSearchParams(window.location.search);
@@ -1440,8 +1193,6 @@ export default function App() {
           isAdmin={isAdmin}
           onAdminLogin={(pw) => { setIsAdmin(true); setAdminPw(pw); }}
           onAdminLogout={() => { setIsAdmin(false); setAdminPw(""); }}
-          theme={theme}
-          onToggleTheme={toggle}
         />
       </>
     );
@@ -1469,12 +1220,7 @@ export default function App() {
               </div>
             ))}
           </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <button className="home-admin-btn" onClick={() => setShowAdminLogin(true)}>🔑 Admin Login</button>
-            <button className="theme-toggle" onClick={toggle} title="Toggle light/dark mode">
-              {theme === "dark" ? "☀️" : "🌙"}
-            </button>
-          </div>
+          <button className="home-admin-btn" onClick={() => setShowAdminLogin(true)}>🔑 Admin Login</button>
         </div>
         {showAdminLogin && (
           <AdminLoginModal

@@ -167,19 +167,13 @@ exports.handler = async (event) => {
       return { statusCode: 404, headers, body: JSON.stringify({ error: "Booking not found or already actioned" }) };
     }
 
-    const { lab, weekKey, slotKey, booking, bookingType } = pendingData.data;
+    const { lab, weekKey, slotKey, booking, bookingType, doubleSlotKey } = pendingData.data;
     const storageKey = bookingType === "loans"
       ? `loans_${lab}_${weekKey}`
       : `bookings_${lab}_${weekKey}`;
 
-    // Load current week data
-    const { data: weekData } = await supabase
-      .from("bookings")
-      .select("data")
-      .eq("storage_key", storageKey)
-      .single();
-
-    const slots = weekData?.data || {};
+    const slotKeys = [slotKey];
+    if (doubleSlotKey) slotKeys.push(doubleSlotKey);
 
     // Handle recurring
     if (booking.recurring && booking.recurWeeks > 1) {
@@ -192,16 +186,32 @@ exports.handler = async (event) => {
         const wkStorageKey = bookingType === "loans" ? `loans_${lab}_${wkk}` : `bookings_${lab}_${wkk}`;
         const { data: wkData } = await supabase.from("bookings").select("data").eq("storage_key", wkStorageKey).single();
         const wkSlots = wkData?.data || {};
-        const { recurring, recurWeeks, status, pendingKey: _pk, ...rest } = booking;
-        wkSlots[slotKey] = { ...rest, recurId, status: "confirmed" };
+        for (const sk of slotKeys) {
+          const slotBk = wkSlots[sk];
+          if (slotBk) {
+            const { recurring, recurWeeks, status, pendingKey: _pk, ...rest } = slotBk;
+            wkSlots[sk] = { ...rest, recurId, status: "confirmed" };
+          }
+        }
         await supabase.from("bookings").upsert(
           { storage_key: wkStorageKey, data: wkSlots, updated_at: new Date().toISOString() },
           { onConflict: "storage_key" }
         );
       }
     } else {
-      const { recurring, recurWeeks, status: _s, pendingKey: _pk, ...rest } = booking;
-      slots[slotKey] = { ...rest, status: "confirmed" };
+      const { data: weekData } = await supabase.from("bookings").select("data").eq("storage_key", storageKey).single();
+      const slots = weekData?.data || {};
+      for (const sk of slotKeys) {
+        const slotBk = slots[sk];
+        if (slotBk) {
+          const { recurring, recurWeeks, status: _s, pendingKey: _pk, ...rest } = slotBk;
+          slots[sk] = { ...rest, status: "confirmed" };
+        } else if (sk === slotKey) {
+          // Fallback for first slot if not found in DB
+          const { recurring, recurWeeks, status: _s, pendingKey: _pk, ...rest } = booking;
+          slots[sk] = { ...rest, status: "confirmed" };
+        }
+      }
       await supabase.from("bookings").upsert(
         { storage_key: storageKey, data: slots, updated_at: new Date().toISOString() },
         { onConflict: "storage_key" }
@@ -233,16 +243,38 @@ exports.handler = async (event) => {
       return { statusCode: 404, headers, body: JSON.stringify({ error: "Booking not found or already actioned" }) };
     }
 
-    // Remove the pending slot from the week data
-    const { lab, weekKey, slotKey, bookingType } = pendingData.data;
+    // Remove the pending slot(s) from the week data
+    const { lab, weekKey, slotKey, booking, bookingType, doubleSlotKey } = pendingData.data;
     const storageKey = bookingType === "loans" ? `loans_${lab}_${weekKey}` : `bookings_${lab}_${weekKey}`;
-    const { data: weekData } = await supabase.from("bookings").select("data").eq("storage_key", storageKey).single();
-    const slots = weekData?.data || {};
-    delete slots[slotKey];
-    await supabase.from("bookings").upsert(
-      { storage_key: storageKey, data: slots, updated_at: new Date().toISOString() },
-      { onConflict: "storage_key" }
-    );
+
+    const slotKeys = [slotKey];
+    if (doubleSlotKey) slotKeys.push(doubleSlotKey);
+
+    if (booking?.recurring && booking?.recurWeeks > 1) {
+      // Delete all recurring weeks
+      const monday = new Date(weekKey);
+      for (let i = 0; i < booking.recurWeeks; i++) {
+        const wkDate = new Date(monday);
+        wkDate.setDate(wkDate.getDate() + i * 7);
+        const wkk = wkDate.toISOString().slice(0, 10);
+        const wkStorageKey = bookingType === "loans" ? `loans_${lab}_${wkk}` : `bookings_${lab}_${wkk}`;
+        const { data: wkData } = await supabase.from("bookings").select("data").eq("storage_key", wkStorageKey).single();
+        const wkSlots = wkData?.data || {};
+        for (const sk of slotKeys) delete wkSlots[sk];
+        await supabase.from("bookings").upsert(
+          { storage_key: wkStorageKey, data: wkSlots, updated_at: new Date().toISOString() },
+          { onConflict: "storage_key" }
+        );
+      }
+    } else {
+      const { data: weekData } = await supabase.from("bookings").select("data").eq("storage_key", storageKey).single();
+      const slots = weekData?.data || {};
+      for (const sk of slotKeys) delete slots[sk];
+      await supabase.from("bookings").upsert(
+        { storage_key: storageKey, data: slots, updated_at: new Date().toISOString() },
+        { onConflict: "storage_key" }
+      );
+    }
 
     // Remove pending record
     await supabase.from("bookings").delete().eq("storage_key", pendingKey);
