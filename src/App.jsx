@@ -138,6 +138,49 @@ function getNextLessonPeriod(periodId) {
   return null;
 }
 
+// Build a per-day map of which cells to skip (consumed by rowspan) or span
+function buildMergeMap(day, weekSlots) {
+  const map = {};
+  let i = 0;
+  while (i < PERIODS.length) {
+    const period = PERIODS[i];
+    const bk = weekSlots?.[slotKey(day, period.id)];
+
+    // Merge consecutive closed slots with the same reason (including breaks in between)
+    if (bk?.status === "closed") {
+      let span = 1;
+      for (let j = i + 1; j < PERIODS.length; j++) {
+        const nextBk = weekSlots?.[slotKey(day, PERIODS[j].id)];
+        if (nextBk?.status === "closed" && nextBk?.reason === bk.reason) {
+          map[PERIODS[j].id] = { skip: true };
+          span++;
+        } else { break; }
+      }
+      map[period.id] = { rowspan: span };
+      i += span;
+      continue;
+    }
+
+    // Merge double period only when the two lessons are immediately adjacent (no break row between)
+    if (bk?.doubleId && !bk?.isDoubleSecond && period.type === "lesson") {
+      const nextPeriod = PERIODS[i + 1];
+      if (nextPeriod && nextPeriod.type === "lesson") {
+        const nextBk = weekSlots?.[slotKey(day, nextPeriod.id)];
+        if (nextBk?.doubleId === bk.doubleId && nextBk?.isDoubleSecond) {
+          map[period.id] = { rowspan: 2 };
+          map[nextPeriod.id] = { skip: true };
+          i += 2;
+          continue;
+        }
+      }
+    }
+
+    map[period.id] = { rowspan: 1 };
+    i++;
+  }
+  return map;
+}
+
 // ─── CSS ──────────────────────────────────────────────────────────────────────
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -183,6 +226,12 @@ const css = `
     --conflict-del:#200f0f;
     --del-hover:   #3d1f1f;
     --infonote-bg: #0f1117;
+    --closed-bg:   #1c0d0d;
+    --closed-b:    #4a1f1f;
+    --closed-text: #f87171;
+    --closed-sub:  #fca5a5;
+    --admin-note-bg: #0d1f13;
+    --admin-note-b:  #1e4a2a;
   }
 
   [data-theme="light"] {
@@ -224,6 +273,12 @@ const css = `
     --conflict-del:#fef2f2;
     --del-hover:   #fee2e2;
     --infonote-bg: #f8fafc;
+    --closed-bg:   #fff1f1;
+    --closed-b:    #fca5a5;
+    --closed-text: #dc2626;
+    --closed-sub:  #ef4444;
+    --admin-note-bg: #f0fdf4;
+    --admin-note-b:  #86efac;
   }
 
   body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; transition: background 0.2s, color 0.2s; }
@@ -405,6 +460,29 @@ const css = `
   .recur-del-opts { display: flex; gap: 8px; flex-wrap: wrap; }
   .recur-del-opt { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border2); cursor: pointer; transition: all 0.15s; font-size: 0.82rem; color: var(--text3); white-space: nowrap; }
   .recur-del-opt:hover { border-color: #e74c3c; color: var(--text); background: var(--conflict-del); }
+
+  /* Merged cells (rowspan) */
+  .slot-cell.has-merged { padding: 0; position: relative; }
+  .slot.merged { position: absolute; inset: 5px; height: auto; border-radius: 8px; }
+  .break-slot.merged { position: absolute; inset: 4px 5px; height: auto; border-radius: 6px; }
+  .slot.merged.closed, .break-slot.merged.closed { justify-content: center; align-items: center; text-align: center; }
+  .slot.merged.booked { justify-content: flex-start; }
+
+  /* Closed slots */
+  .slot.closed { background: var(--closed-bg); border: 1px solid var(--closed-b); cursor: pointer; }
+  .slot.closed:hover { filter: brightness(1.06); }
+  .break-slot.closed { background: var(--closed-bg); border-color: var(--closed-b); cursor: pointer; }
+  .closed-label { font-family: 'DM Mono', monospace; font-size: 0.6rem; color: var(--closed-text); text-align: center; letter-spacing: 0.05em; }
+  .closed-reason { font-size: 0.65rem; color: var(--closed-sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; margin-top: 1px; }
+  .closed-info-box { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 20px 16px; background: var(--closed-bg); border: 1px solid var(--closed-b); border-radius: 10px; }
+  .closed-info-reason { font-size: 0.9rem; color: var(--closed-sub); text-align: center; }
+  /* Admin booking note */
+  .admin-book-note { background: var(--admin-note-bg); border: 1px solid var(--admin-note-b); border-radius: 8px; padding: 10px 14px; font-size: 0.8rem; color: #86efac; line-height: 1.5; }
+  /* Booking/closure mode toggle */
+  .mode-tabs { display: flex; gap: 0; border: 1px solid var(--border2); border-radius: 8px; overflow: hidden; }
+  .mode-tab { flex: 1; background: none; border: none; padding: 8px 0; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--text4); transition: all 0.15s; }
+  .mode-tab.active { background: var(--accent); color: #fff; }
+  .mode-tab:not(.active):hover { background: var(--border); color: var(--text2); }
 
   /* Double period */
   .slot-double { font-size: 0.62rem; color: var(--text4); font-family: 'DM Mono', monospace; }
@@ -596,10 +674,11 @@ function ChangePasswordPanel({ adminPassword, onToast }) {
 
 // ─── Booking Modal ────────────────────────────────────────────────────────────
 
-function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave, onClose, onDelete, onAdminApprove, onAdminReject, isLoans, isAdmin, weekBookings }) {
-  const isNew       = !booking?.teacher;
+function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave, onAdminSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, isLoans, isAdmin, weekBookings }) {
+  const isNew       = !booking?.teacher && booking?.status !== "closed";
   const isPending   = booking?.status === "pending";
   const isConfirmed = booking?.status === "confirmed";
+  const isClosed    = booking?.status === "closed";
   const isRecurring = !!booking?.recurId;
   const isDoubleSecond = !!booking?.isDoubleSecond;
 
@@ -610,16 +689,57 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
     color: DEFAULT_COLOR, recurring: false, recurWeeks: 8,
     ...booking,
   });
-  const [delMode, setDelMode] = useState(false);
-  const [doubleMode, setDoubleMode] = useState(false);
+  const [delMode, setDelMode]         = useState(false);
+  const [doubleMode, setDoubleMode]   = useState(false);
+  const [closureMode, setClosureMode] = useState(false);
+  const [closureReason, setClosureReason]   = useState("");
+  const [closureThrough, setClosureThrough] = useState("");
 
-  const nextPeriod       = isNew ? getNextLessonPeriod(period.id) : null;
-  const nextKey          = nextPeriod ? slotKey(day, nextPeriod.id) : null;
+  const nextPeriod        = isNew ? getNextLessonPeriod(period.id) : null;
+  const nextKey           = nextPeriod ? slotKey(day, nextPeriod.id) : null;
   const nextAlreadyBooked = nextKey && weekBookings?.[nextKey];
+
+  // Periods after clicked one (for closure spread)
+  const periodIdx    = PERIODS.findIndex(p => p.id === period.id);
+  const periodsAfter = PERIODS.slice(periodIdx + 1);
 
   const upd = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const canSave = form.teacher.trim() && form.class.trim() && form.subject.trim()
     && !(doubleMode && nextAlreadyBooked);
+
+  // Closed slot view
+  if (isClosed) {
+    return (
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal" style={{ "--accent": "#ef4444" }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <div>
+              <div className="modal-title">Slot Closed</div>
+              <div className="modal-sub">{day} · {period.label} · {period.time}</div>
+            </div>
+            <button className="modal-close" onClick={onClose}>×</button>
+          </div>
+          <div className="modal-body">
+            <div className="closed-info-box">
+              <span style={{ fontSize: "2rem" }}>🚫</span>
+              <div className="closed-info-reason">{booking.reason || "Unavailable"}</div>
+            </div>
+            {!isAdmin && (
+              <div style={{ fontSize: "0.78rem", color: "var(--text4)", textAlign: "center" }}>
+                This slot has been marked unavailable by an administrator.
+              </div>
+            )}
+          </div>
+          <div className="modal-footer">
+            {isAdmin && (
+              <button className="btn-delete" onClick={() => onDelete("single")}>Remove Closure</button>
+            )}
+            <button className="btn-cancel" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Pending view (non-admin just sees info)
   if (isPending && !isAdmin) {
@@ -739,13 +859,50 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
             </div>
           )}
 
-          {isNew && (
+          {isNew && isAdmin && (
+            <div className="mode-tabs">
+              <button className={`mode-tab${!closureMode ? " active" : ""}`}
+                style={{ "--accent": accentColor }}
+                onClick={() => setClosureMode(false)}>📅 Add Booking</button>
+              <button className={`mode-tab${closureMode ? " active" : ""}`}
+                style={{ "--accent": "#ef4444" }}
+                onClick={() => setClosureMode(true)}>🚫 Close Slot</button>
+            </div>
+          )}
+
+          {isNew && !isAdmin && (
             <div style={{ fontSize: "0.8rem", color: "#64748b", background: "#0f1117", border: "1px solid #2d3748", borderRadius: 8, padding: "10px 14px", lineHeight: 1.5 }}>
               📧 Your booking will be sent to the lab technician for approval. The slot will show as <strong style={{ color: "#86efac" }}>pending</strong> until confirmed.
             </div>
           )}
 
-          <div className="field-group">
+          {isNew && isAdmin && !closureMode && (
+            <div className="admin-book-note">
+              🔑 Admin booking — saved immediately without approval.
+            </div>
+          )}
+
+          {isNew && isAdmin && closureMode ? (
+            <>
+              <div className="field-group">
+                <label className="field-label">Reason <span className="required">*</span></label>
+                <input className="field-input" value={closureReason} onChange={(e) => setClosureReason(e.target.value)}
+                  placeholder="e.g. Visitors in school, Lab maintenance, Staff event…" autoFocus />
+              </div>
+              <div className="field-group">
+                <label className="field-label">Extend closure through</label>
+                <select className="field-input" value={closureThrough} onChange={(e) => setClosureThrough(e.target.value)}>
+                  <option value="">This slot only</option>
+                  {periodsAfter.map((p) => (
+                    <option key={p.id} value={p.id}>{p.label} ({p.time})</option>
+                  ))}
+                  <option value="wholeday">Whole day (all periods)</option>
+                </select>
+              </div>
+            </>
+          ) : (
+            <>
+            <div className="field-group">
             <label className="field-label">Teacher Name <span className="required">*</span></label>
             <input className="field-input" value={form.teacher} onChange={upd("teacher")} placeholder="e.g. Ms. Nguyen" />
           </div>
@@ -791,7 +948,7 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
                     <span className="recur-hint">weeks</span>
                   </div>
                   <div className="recur-hint" style={{ color: "#3b5268" }}>
-                    Creates {form.recurWeeks} bookings from the current week (all require approval)
+                    Creates {form.recurWeeks} bookings from the current week{isAdmin ? "" : " (all require approval)"}
                   </div>
                 </div>
               )}
@@ -821,6 +978,8 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
               <input className="field-input" type="number" min="1" value={form.numGroups} onChange={upd("numGroups")} placeholder="e.g. 6" />
             </div>
           </div>
+            </>
+          )}
         </div>
 
         <div className="modal-footer">
@@ -841,9 +1000,20 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
           <button className="btn-cancel" onClick={delMode ? () => setDelMode(false) : onClose}>
             {delMode ? "Back" : "Cancel"}
           </button>
-          {!delMode && (
-            <button className="btn-save" style={{ background: form.color }} disabled={!canSave} onClick={() => onSave({ ...form, double: doubleMode })}>
-              {isNew ? "Submit for Approval" : "Save Changes"}
+          {!delMode && !closureMode && (
+            <button className="btn-save" style={{ background: form.color }} disabled={!canSave}
+              onClick={() => {
+                const f = { ...form, double: doubleMode };
+                isAdmin && isNew ? onAdminSave(f) : onSave(f);
+              }}>
+              {isNew ? (isAdmin ? "Save Booking" : "Submit for Approval") : "Save Changes"}
+            </button>
+          )}
+          {!delMode && closureMode && (
+            <button className="btn-save" style={{ background: "#ef4444" }}
+              disabled={!closureReason.trim()}
+              onClick={() => onClosure({ reason: closureReason, throughPeriodId: closureThrough || "" })}>
+              Close {closureThrough === "wholeday" ? "Whole Day" : closureThrough ? "Slots" : "Slot"}
             </button>
           )}
         </div>
@@ -869,6 +1039,76 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
     onSaveState("saved");
     setTimeout(() => onSaveState("idle"), 2000);
   }, [lab, dbKeyFn, onSaveState]);
+
+  // Admin: save a new booking directly as confirmed (no email)
+  const handleAdminDirectSave = async (form) => {
+    const { day, period } = modal;
+    const { double, recurring, recurWeeks, ...rest } = form;
+    const key = slotKey(day, period.id);
+
+    const nextPeriod = double ? getNextLessonPeriod(period.id) : null;
+    const key2 = nextPeriod ? slotKey(day, nextPeriod.id) : null;
+    const doubleId = double && nextPeriod ? `double_${Date.now()}_${key}` : undefined;
+
+    const confirmed = {
+      ...rest, status: "confirmed",
+      day, periodLabel: period.label, periodTime: period.time,
+      ...(doubleId ? { doubleId, doublePartnerKey: key2, doublePeriodLabel: nextPeriod.label, doublePeriodTime: nextPeriod.time } : {}),
+    };
+    const confirmed2 = key2 ? {
+      ...rest, status: "confirmed",
+      day, periodLabel: nextPeriod.label, periodTime: nextPeriod.time,
+      doubleId, isDoubleSecond: true, doublePartnerKey: key,
+    } : null;
+
+    const nextAll = { ...bookings };
+    if (recurring && recurWeeks > 1) {
+      const recurId = `recur_${Date.now()}_${key}`;
+      for (let i = 0; i < recurWeeks; i++) {
+        const wkDate = addWeeks(getMondayOfWeek(new Date(wk)), i);
+        const wkk = weekKey(wkDate);
+        const { data: wkData } = await supabase.from("bookings").select("data").eq("storage_key", dbKeyFn(lab, wkk)).single();
+        const wkSlots = { ...(wkData?.data || {}) };
+        wkSlots[key] = { ...confirmed, recurId };
+        if (confirmed2) wkSlots[key2] = { ...confirmed2, recurId };
+        nextAll[wkk] = wkSlots;
+        await persist(wkk, wkSlots);
+      }
+    } else {
+      const existing = { ...(nextAll[wk] || {}) };
+      existing[key] = confirmed;
+      if (confirmed2) existing[key2] = confirmed2;
+      nextAll[wk] = existing;
+      await persist(wk, existing);
+    }
+    setBookings(nextAll);
+    setModal(null);
+    onToast("Booking saved ✓");
+  };
+
+  // Admin: close a slot (optionally spanning multiple periods)
+  const handleClosure = async ({ reason, throughPeriodId }) => {
+    const { day, period } = modal;
+    const existing = { ...(bookings[wk] || {}) };
+    let startIdx, endIdx;
+    if (throughPeriodId === "wholeday") {
+      startIdx = 0;
+      endIdx = PERIODS.length - 1;
+    } else {
+      startIdx = PERIODS.findIndex(p => p.id === period.id);
+      endIdx = throughPeriodId ? PERIODS.findIndex(p => p.id === throughPeriodId) : startIdx;
+    }
+    for (let i = startIdx; i <= endIdx; i++) {
+      const p = PERIODS[i];
+      existing[slotKey(day, p.id)] = { status: "closed", reason, day, periodLabel: p.label, periodTime: p.time };
+    }
+    const nextAll = { ...bookings, [wk]: existing };
+    setBookings(nextAll);
+    await persist(wk, existing);
+    setModal(null);
+    const count = endIdx - startIdx + 1;
+    onToast(`${count} slot${count !== 1 ? "s" : ""} closed`);
+  };
 
   // Submit new booking → pending state + email
   const handleSave = async (form) => {
@@ -1159,7 +1399,10 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
     onToast(`${primaryKeys.length} booking${primaryKeys.length !== 1 ? "s" : ""} approved ✓`);
   };
 
-  const pendingCount = Object.values(bookings[wk] || {}).filter((b) => b.status === "pending").length;
+  const weekSlots = bookings[wk] || {};
+  const mergeMaps = Object.fromEntries(DAYS.map((d) => [d, buildMergeMap(d, weekSlots)]));
+
+  const pendingCount = Object.values(weekSlots).filter((b) => b.status === "pending").length;
 
   return (
     <>
@@ -1207,24 +1450,33 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                   <div className="pl-time">{period.time}</div>
                 </td>
                 {DAYS.map((day) => {
-                  const bk     = getBooking(day, period.id);
-                  const cross  = getCrossBooking(day, period.id);
+                  const mergeInfo = mergeMaps[day]?.[period.id];
+                  if (mergeInfo?.skip) return null;
+                  const rowspan  = mergeInfo?.rowspan || 1;
+                  const isMerged = rowspan > 1;
+
+                  const bk        = getBooking(day, period.id);
+                  const cross     = getCrossBooking(day, period.id);
                   const isPending = bk?.status === "pending";
-                  const color  = isPending ? "#86efac" : (bk?.color || accentColor);
+                  const isClosed  = bk?.status === "closed";
+                  const color     = isClosed ? "#f87171" : isPending ? "#86efac" : (bk?.color || accentColor);
+                  const isSelected = selectMode && isAdmin && bk && selectedSlots.has(slotKey(day, period.id));
 
                   return (
-                    <td key={day} className="slot-cell">
+                    <td key={day} className={`slot-cell${isMerged ? " has-merged" : ""}`} rowSpan={rowspan > 1 ? rowspan : undefined}>
                       {period.type === "break" ? (
                         <div
-                          className={`break-slot${bk ? (isPending ? " pending" : " booked") : ""}${selectMode && isAdmin && bk && selectedSlots.has(slotKey(day, period.id)) ? " selected" : ""}`}
-                          style={bk && !isPending ? { borderColor: color, background: color + "22" } : {}}
+                          className={`break-slot${bk ? (isClosed ? " closed" : isPending ? " pending" : " booked") : ""}${isMerged ? " merged" : ""}${isSelected ? " selected" : ""}`}
+                          style={bk && !isPending && !isClosed ? { borderColor: color, background: color + "22" } : {}}
                           onClick={() => {
                             if (selectMode && isAdmin && bk) { toggleSlotSelection(day, period.id); return; }
                             if (bk) setModal({ day, period });
                           }}
                         >
                           {bk ? (
-                            isPending ? (
+                            isClosed ? (
+                              <span style={{ fontSize: "0.65rem", color: "var(--closed-text)", fontFamily: "DM Mono, monospace" }}>🚫 {bk.reason}</span>
+                            ) : isPending ? (
                               <span style={{ fontSize: "0.65rem", color: "#86efac", fontFamily: "DM Mono, monospace" }}>⏳ pending</span>
                             ) : (
                               <span style={{ fontSize: "0.72rem", color: "#f0f4ff", fontWeight: 600 }}>{bk.teacher} · {bk.class}</span>
@@ -1240,15 +1492,20 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                         </div>
                       ) : (
                         <div
-                          className={`slot${bk ? (isPending ? " pending" : " booked") : " available"}${selectMode && isAdmin && bk && selectedSlots.has(slotKey(day, period.id)) ? " selected" : ""}`}
-                          style={bk && !isPending ? { background: color + "22", borderColor: color } : {}}
+                          className={`slot${bk ? (isClosed ? " closed" : isPending ? " pending" : " booked") : " available"}${isMerged ? " merged" : ""}${isSelected ? " selected" : ""}`}
+                          style={bk && !isPending && !isClosed ? { background: color + "22", borderColor: color } : {}}
                           onClick={() => {
                             if (selectMode && isAdmin && bk) { toggleSlotSelection(day, period.id); return; }
                             setModal({ day, period });
                           }}
                         >
                           {bk ? (
-                            isPending ? (
+                            isClosed ? (
+                              <>
+                                <div className="closed-label">🚫 CLOSED</div>
+                                <div className="closed-reason">{bk.reason}</div>
+                              </>
+                            ) : isPending ? (
                               <>
                                 <div className="slot-badges">
                                   {cross && <span className="slot-conflict-icon" style={{ color: "#a3623a" }}>⚠</span>}
@@ -1264,11 +1521,16 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                                 <div className="slot-badges">
                                   {cross && <span className="slot-conflict-icon">⚠</span>}
                                   {bk.recurId && <span className="slot-recur">↻</span>}
-                                  {bk.doubleId && <span className="slot-double">↔</span>}
+                                  {bk.doubleId && !isMerged && <span className="slot-double">↔</span>}
                                 </div>
                                 <div className="slot-teacher">{bk.teacher}</div>
                                 <div className="slot-class" style={{ color }}>{bk.class}</div>
                                 <div className="slot-subject">{bk.subject}</div>
+                                {isMerged && bk.doublePeriodLabel && (
+                                  <div style={{ fontSize: "0.6rem", color, opacity: 0.7, marginTop: 2, fontFamily: "DM Mono, monospace" }}>
+                                    {period.label} + {bk.doublePeriodLabel}
+                                  </div>
+                                )}
                                 {cross && <div className="slot-conflict" />}
                               </>
                             )
@@ -1309,6 +1571,8 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
           booking={getBooking(modal.day, modal.period.id)}
           conflictBooking={getCrossBooking(modal.day, modal.period.id)}
           onSave={handleSave}
+          onAdminSave={handleAdminDirectSave}
+          onClosure={handleClosure}
           onClose={() => setModal(null)}
           onDelete={handleDelete}
           onAdminApprove={handleAdminApprove}
