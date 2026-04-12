@@ -419,6 +419,8 @@ const css = `
   .select-toggle-btn.active { background: #3b82f622; border-color: #3b82f6; color: #60a5fa; }
   .bulk-delete-btn { background: #ef4444; color: #fff; border: none; padding: 4px 14px; border-radius: 6px; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.72rem; transition: filter 0.15s; }
   .bulk-delete-btn:hover { filter: brightness(1.1); }
+  .bulk-approve-btn { background: #10b981; color: #fff; border: none; padding: 4px 14px; border-radius: 6px; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.72rem; transition: filter 0.15s; }
+  .bulk-approve-btn:hover { filter: brightness(1.1); }
   .slot.selected { outline: 2px solid #3b82f6; outline-offset: -2px; }
   .slot.selected::after { content: '✓'; position: absolute; top: 4px; right: 4px; width: 15px; height: 15px; background: #3b82f6; border-radius: 50%; color: #fff; font-size: 0.58rem; line-height: 15px; text-align: center; font-weight: 700; }
   .break-slot.selected { outline: 2px solid #3b82f6; outline-offset: -2px; }
@@ -1105,6 +1107,58 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
     onToast(`${n} booking${n !== 1 ? "s" : ""} removed`);
   };
 
+  const handleBulkApprove = async () => {
+    const currentWeek = bookings[wk] || {};
+    const nextAll = { ...bookings };
+
+    // Only operate on pending slots; collect unique primary keys (skip double-second slots)
+    const primaryKeys = [...selectedSlots].filter((key) => {
+      const bk = currentWeek[key];
+      return bk?.status === "pending" && !bk?.isDoubleSecond;
+    });
+
+    for (const key of primaryKeys) {
+      const bk = currentWeek[key];
+      const keysToApprove = [key];
+      if (bk.doublePartnerKey) keysToApprove.push(bk.doublePartnerKey);
+
+      if (bk.recurring && bk.recurWeeks > 1) {
+        const recurId = `recur_${Date.now()}_${key}`;
+        for (let i = 0; i < bk.recurWeeks; i++) {
+          const wkDate = addWeeks(getMondayOfWeek(new Date(wk)), i);
+          const wkk = weekKey(wkDate);
+          const { data: wkData } = await supabase.from("bookings").select("data").eq("storage_key", dbKeyFn(lab, wkk)).single();
+          const wkSlots = { ...(wkData?.data || {}) };
+          for (const k of keysToApprove) {
+            const slotBk = wkSlots[k];
+            if (slotBk) {
+              const { recurring, recurWeeks, status, pendingKey, ...rest } = slotBk;
+              wkSlots[k] = { ...rest, recurId, status: "confirmed" };
+            }
+          }
+          nextAll[wkk] = wkSlots;
+          await persist(wkk, wkSlots);
+        }
+      } else {
+        const existing = { ...(nextAll[wk] || {}) };
+        for (const k of keysToApprove) {
+          const slotBk = existing[k];
+          if (slotBk) {
+            const { recurring, recurWeeks, status, pendingKey, ...rest } = slotBk;
+            existing[k] = { ...rest, status: "confirmed" };
+          }
+        }
+        nextAll[wk] = existing;
+        await persist(wk, existing);
+      }
+    }
+
+    setBookings(nextAll);
+    setSelectedSlots(new Set());
+    setSelectMode(false);
+    onToast(`${primaryKeys.length} booking${primaryKeys.length !== 1 ? "s" : ""} approved ✓`);
+  };
+
   const pendingCount = Object.values(bookings[wk] || {}).filter((b) => b.status === "pending").length;
 
   return (
@@ -1116,11 +1170,20 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
               ⏳ {pendingCount} pending booking{pendingCount > 1 ? "s" : ""} awaiting approval — click to review
             </span>
           )}
-          {selectMode && selectedSlots.size > 0 && (
-            <button className="bulk-delete-btn" onClick={handleBulkDelete}>
-              Remove {selectedSlots.size} selected
-            </button>
-          )}
+          {selectMode && selectedSlots.size > 0 && (() => {
+            const currentWeek = bookings[wk] || {};
+            const pendingCount = [...selectedSlots].filter(k => currentWeek[k]?.status === "pending" && !currentWeek[k]?.isDoubleSecond).length;
+            return (<>
+              {pendingCount > 0 && (
+                <button className="bulk-approve-btn" onClick={handleBulkApprove}>
+                  ✓ Approve {pendingCount} pending
+                </button>
+              )}
+              <button className="bulk-delete-btn" onClick={handleBulkDelete}>
+                Remove {selectedSlots.size} selected
+              </button>
+            </>);
+          })()}
           <button className={`select-toggle-btn${selectMode ? " active" : ""}`} onClick={toggleSelectMode}>
             {selectMode ? "✕ Cancel" : "⊡ Select"}
           </button>
@@ -1170,9 +1233,9 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                             <span style={{ fontSize: "0.65rem", color: "#2d3748", fontFamily: "DM Mono, monospace" }}>+ book</span>
                           )}
                           <div className="break-slot-icons">
-                            {bk?.recurId && <span className="break-recur">↻</span>}
-                            {bk?.doubleId && <span className="break-recur">↔</span>}
-                            {cross && <span style={{ fontSize: "0.7rem", color: "#f97316" }}>⚠</span>}
+                            {(bk?.recurId || (isPending && bk?.recurring)) && <span className="break-recur" style={isPending ? { opacity: 0.5 } : {}}>↻</span>}
+                            {bk?.doubleId && <span className="break-recur" style={isPending ? { opacity: 0.5 } : {}}>↔</span>}
+                            {cross && <span style={{ fontSize: "0.7rem", color: isPending ? "#a3623a" : "#f97316" }}>⚠</span>}
                           </div>
                         </div>
                       ) : (
@@ -1187,8 +1250,14 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                           {bk ? (
                             isPending ? (
                               <>
+                                <div className="slot-badges">
+                                  {cross && <span className="slot-conflict-icon" style={{ color: "#a3623a" }}>⚠</span>}
+                                  {(bk.recurId || bk.recurring) && <span className="slot-recur" style={{ opacity: 0.5 }}>↻</span>}
+                                  {bk.doubleId && <span className="slot-double" style={{ opacity: 0.5 }}>↔</span>}
+                                </div>
                                 <div className="pending-label">⏳ PENDING</div>
                                 <div className="pending-teacher">{bk.teacher} · {bk.class}</div>
+                                {cross && <div className="slot-conflict" style={{ background: "#a3623a" }} />}
                               </>
                             ) : (
                               <>
