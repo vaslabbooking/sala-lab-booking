@@ -272,7 +272,7 @@ const css = `
   /* Grid */
   .grid-wrap { flex: 1; overflow: auto; padding: 24px; }
   .timetable { min-width: 700px; border-collapse: collapse; width: 100%; }
-  .timetable th { font-family: 'DM Mono', monospace; font-size: 0.75rem; font-weight: 500; color: var(--text5); padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .timetable th { font-family: 'DM Mono', monospace; font-size: 0.75rem; font-weight: 500; color: var(--text5); padding: 1px 12px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
   .timetable th.day-header { text-align: center; color: var(--text3); }
   .period-label { padding: 10px 14px; vertical-align: top; white-space: nowrap; }
   .period-label .pl-name { font-family: 'DM Mono', monospace; font-size: 0.78rem; font-weight: 500; color: var(--text4); }
@@ -302,6 +302,8 @@ const css = `
 
   /* Break slots */
   .break-row td { background: transparent; }
+  .break-row .period-label { padding-top: 4px; padding-bottom: 4px; }
+  .break-row .slot-cell { padding-top: 4px; padding-bottom: 4px; }
   .break-row .period-label .pl-name { color: var(--text6); }
   .break-slot { height: 36px; border-radius: 6px; background: var(--break-slot); border: 1px dashed var(--break-b); display: flex; align-items: center; padding: 0 10px; cursor: pointer; transition: all 0.15s; position: relative; overflow: hidden; gap: 6px; }
   .break-slot:hover { background: var(--slot-avail-h); border-color: var(--slot-avail-bh); }
@@ -408,6 +410,19 @@ const css = `
   .slot-double { font-size: 0.62rem; color: var(--text4); font-family: 'DM Mono', monospace; }
   .double-note { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.25); border-radius: 8px; padding: 8px 12px; font-size: 0.78rem; color: #60a5fa; line-height: 1.5; }
   .double-conflict-note { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 8px 12px; font-size: 0.78rem; color: #f87171; line-height: 1.5; }
+
+  /* Multi-select */
+  .admin-toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 24px; background: var(--pending-bar); border-bottom: 1px solid var(--pending-bar-b); flex-wrap: wrap; min-height: 38px; }
+  .admin-toolbar-pending { font-family: 'DM Mono', monospace; font-size: 0.8rem; color: #86efac; }
+  .select-toggle-btn { background: none; border: 1px solid var(--border2); color: var(--text4); padding: 4px 12px; border-radius: 6px; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.72rem; transition: all 0.15s; margin-left: auto; }
+  .select-toggle-btn:hover { border-color: var(--text3); color: var(--text2); }
+  .select-toggle-btn.active { background: #3b82f622; border-color: #3b82f6; color: #60a5fa; }
+  .bulk-delete-btn { background: #ef4444; color: #fff; border: none; padding: 4px 14px; border-radius: 6px; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.72rem; transition: filter 0.15s; }
+  .bulk-delete-btn:hover { filter: brightness(1.1); }
+  .slot.selected { outline: 2px solid #3b82f6; outline-offset: -2px; }
+  .slot.selected::after { content: '✓'; position: absolute; top: 4px; right: 4px; width: 15px; height: 15px; background: #3b82f6; border-radius: 50%; color: #fff; font-size: 0.58rem; line-height: 15px; text-align: center; font-weight: 700; }
+  .break-slot.selected { outline: 2px solid #3b82f6; outline-offset: -2px; }
+  .break-slot.selected::after { content: '✓'; position: absolute; top: 50%; right: 6px; transform: translateY(-50%); width: 13px; height: 13px; background: #3b82f6; border-radius: 50%; color: #fff; font-size: 0.55rem; line-height: 13px; text-align: center; font-weight: 700; }
 
   /* Admin login modal */
   .admin-login-modal { background: var(--modal-bg); border: 1px solid var(--border2); border-radius: 16px; width: 100%; max-width: 380px; padding: 32px; animation: slideUp 0.2s ease; }
@@ -838,7 +853,9 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
 // ─── Timetable Grid ───────────────────────────────────────────────────────────
 
 function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, monday, dbKeyFn, lab, isLoans, onSaveState, isAdmin, onToast }) {
-  const [modal, setModal] = useState(null);
+  const [modal, setModal]             = useState(null);
+  const [selectMode, setSelectMode]   = useState(false);
+  const [selectedSlots, setSelectedSlots] = useState(new Set());
   const wk = weekKey(monday);
 
   const getBooking       = (day, pid) => bookings[wk]?.[slotKey(day, pid)] || null;
@@ -1060,13 +1077,53 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
     onToast("Booking removed");
   };
 
+  const toggleSelectMode = () => { setSelectMode((v) => !v); setSelectedSlots(new Set()); };
+
+  const toggleSlotSelection = (day, periodId) => {
+    const key = slotKey(day, periodId);
+    setSelectedSlots((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    const existing = { ...(bookings[wk] || {}) };
+    const keysToDelete = new Set(selectedSlots);
+    for (const key of selectedSlots) {
+      const bk = existing[key];
+      if (bk?.doublePartnerKey) keysToDelete.add(bk.doublePartnerKey);
+    }
+    for (const key of keysToDelete) delete existing[key];
+    const nextAll = { ...bookings, [wk]: existing };
+    setBookings(nextAll);
+    await persist(wk, existing);
+    const n = keysToDelete.size;
+    setSelectedSlots(new Set());
+    setSelectMode(false);
+    onToast(`${n} booking${n !== 1 ? "s" : ""} removed`);
+  };
+
   const pendingCount = Object.values(bookings[wk] || {}).filter((b) => b.status === "pending").length;
 
   return (
     <>
-      {pendingCount > 0 && isAdmin && (
-        <div style={{ background: "#1a2d1a", borderBottom: "1px solid #3d5c1e", padding: "8px 24px", fontSize: "0.8rem", color: "#86efac", fontFamily: "DM Mono, monospace" }}>
-          ⏳ {pendingCount} pending booking{pendingCount > 1 ? "s" : ""} awaiting approval — click to review
+      {isAdmin && (
+        <div className="admin-toolbar">
+          {pendingCount > 0 && (
+            <span className="admin-toolbar-pending">
+              ⏳ {pendingCount} pending booking{pendingCount > 1 ? "s" : ""} awaiting approval — click to review
+            </span>
+          )}
+          {selectMode && selectedSlots.size > 0 && (
+            <button className="bulk-delete-btn" onClick={handleBulkDelete}>
+              Remove {selectedSlots.size} selected
+            </button>
+          )}
+          <button className={`select-toggle-btn${selectMode ? " active" : ""}`} onClick={toggleSelectMode}>
+            {selectMode ? "✕ Cancel" : "⊡ Select"}
+          </button>
         </div>
       )}
       <div className="grid-wrap">
@@ -1074,11 +1131,8 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
           <thead>
             <tr>
               <th style={{ width: 110 }}></th>
-              {DAYS.map((d, i) => (
-                <th key={d} className="day-header">
-                  {DAY_SHORT[i]}<br />
-                  <span style={{ color: "#334155", fontWeight: 400 }}>{d}</span>
-                </th>
+              {DAYS.map((d) => (
+                <th key={d} className="day-header">{d}</th>
               ))}
             </tr>
           </thead>
@@ -1099,9 +1153,12 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                     <td key={day} className="slot-cell">
                       {period.type === "break" ? (
                         <div
-                          className={`break-slot${bk ? (isPending ? " pending" : " booked") : ""}`}
+                          className={`break-slot${bk ? (isPending ? " pending" : " booked") : ""}${selectMode && isAdmin && bk && selectedSlots.has(slotKey(day, period.id)) ? " selected" : ""}`}
                           style={bk && !isPending ? { borderColor: color, background: color + "22" } : {}}
-                          onClick={() => bk || !isPending ? setModal({ day, period }) : null}
+                          onClick={() => {
+                            if (selectMode && isAdmin && bk) { toggleSlotSelection(day, period.id); return; }
+                            if (bk) setModal({ day, period });
+                          }}
                         >
                           {bk ? (
                             isPending ? (
@@ -1120,9 +1177,12 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                         </div>
                       ) : (
                         <div
-                          className={`slot${bk ? (isPending ? " pending" : " booked") : " available"}`}
+                          className={`slot${bk ? (isPending ? " pending" : " booked") : " available"}${selectMode && isAdmin && bk && selectedSlots.has(slotKey(day, period.id)) ? " selected" : ""}`}
                           style={bk && !isPending ? { background: color + "22", borderColor: color } : {}}
-                          onClick={() => setModal({ day, period })}
+                          onClick={() => {
+                            if (selectMode && isAdmin && bk) { toggleSlotSelection(day, period.id); return; }
+                            setModal({ day, period });
+                          }}
                         >
                           {bk ? (
                             isPending ? (
