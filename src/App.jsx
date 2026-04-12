@@ -96,9 +96,9 @@ const LABS = {
 
 const SLOT_COLORS = [
   { id: "c0",  hex: "#3b82f6", label: "Blue"    },
-  { id: "c1",  hex: "#10b981", label: "Green"   },
+  { id: "c1",  hex: "#0ea5e9", label: "Sky"     },  // was Green — too close to pending
   { id: "c2",  hex: "#f59e0b", label: "Amber"   },
-  { id: "c3",  hex: "#ef4444", label: "Red"     },
+  { id: "c3",  hex: "#6366f1", label: "Indigo"  },  // was Red — too close to closed
   { id: "c4",  hex: "#8b5cf6", label: "Purple"  },
   { id: "c5",  hex: "#ec4899", label: "Pink"    },
   { id: "c6",  hex: "#14b8a6", label: "Teal"    },
@@ -106,7 +106,7 @@ const SLOT_COLORS = [
   { id: "c8",  hex: "#a3e635", label: "Lime"    },
   { id: "c9",  hex: "#94a3b8", label: "Slate"   },
   { id: "c10", hex: "#e879f9", label: "Fuchsia" },
-  { id: "c11", hex: "#fb7185", label: "Rose"    },
+  { id: "c11", hex: "#06b6d4", label: "Cyan"    },  // was Rose — too close to closed
 ];
 
 const DEFAULT_COLOR = SLOT_COLORS[0].hex;
@@ -139,15 +139,15 @@ function getNextLessonPeriod(periodId) {
 }
 
 // Build a per-day map of which cells to skip (consumed by rowspan) or span
-function buildMergeMap(day, weekSlots) {
+function buildMergeMap(day, weekSlots, isLoans = false) {
   const map = {};
   let i = 0;
   while (i < PERIODS.length) {
     const period = PERIODS[i];
     const bk = weekSlots?.[slotKey(day, period.id)];
 
-    // Merge consecutive closed slots with the same reason (including breaks in between)
-    if (bk?.status === "closed") {
+    // Merge consecutive closed slots with the same reason — only on the lab's own tab
+    if (!isLoans && bk?.status === "closed") {
       let span = 1;
       for (let j = i + 1; j < PERIODS.length; j++) {
         const nextBk = weekSlots?.[slotKey(day, PERIODS[j].id)];
@@ -226,10 +226,10 @@ const css = `
     --conflict-del:#200f0f;
     --del-hover:   #3d1f1f;
     --infonote-bg: #0f1117;
-    --closed-bg:   #1c0d0d;
-    --closed-b:    #4a1f1f;
-    --closed-text: #f87171;
-    --closed-sub:  #fca5a5;
+    --closed-bg:   #1a1d24;
+    --closed-b:    #3a3f4e;
+    --closed-text: #94a3b8;
+    --closed-sub:  #64748b;
     --admin-note-bg: #0d1f13;
     --admin-note-b:  #1e4a2a;
   }
@@ -273,10 +273,10 @@ const css = `
     --conflict-del:#fef2f2;
     --del-hover:   #fee2e2;
     --infonote-bg: #f8fafc;
-    --closed-bg:   #fff1f1;
-    --closed-b:    #fca5a5;
-    --closed-text: #dc2626;
-    --closed-sub:  #ef4444;
+    --closed-bg:   #f1f5f9;
+    --closed-b:    #94a3b8;
+    --closed-text: #64748b;
+    --closed-sub:  #475569;
     --admin-note-bg: #f0fdf4;
     --admin-note-b:  #86efac;
   }
@@ -373,6 +373,7 @@ const css = `
   .leg-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
   .leg-conflict { width: 10px; height: 3px; border-radius: 2px; background: #f97316; flex-shrink: 0; }
   .leg-pending { width: 10px; height: 10px; border-radius: 3px; background: var(--slot-pend); border: 1px dashed var(--slot-pend-b); flex-shrink: 0; }
+  .leg-closed { width: 10px; height: 10px; border-radius: 3px; background: repeating-linear-gradient(-45deg, var(--closed-bg), var(--closed-bg) 3px, var(--closed-b) 3px, var(--closed-b) 4px); border: 1px solid var(--closed-b); flex-shrink: 0; }
 
   /* Saving */
   .saving-indicator { font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--text4); display: flex; align-items: center; gap: 6px; }
@@ -469,9 +470,9 @@ const css = `
   .slot.merged.booked { justify-content: flex-start; }
 
   /* Closed slots */
-  .slot.closed { background: var(--closed-bg); border: 1px solid var(--closed-b); cursor: pointer; }
+  .slot.closed { background: repeating-linear-gradient(-45deg, var(--closed-bg), var(--closed-bg) 5px, var(--closed-b) 5px, var(--closed-b) 6px); border: 1px solid var(--closed-b); cursor: pointer; }
   .slot.closed:hover { filter: brightness(1.06); }
-  .break-slot.closed { background: var(--closed-bg); border-color: var(--closed-b); cursor: pointer; }
+  .break-slot.closed { background: repeating-linear-gradient(-45deg, var(--closed-bg), var(--closed-bg) 5px, var(--closed-b) 5px, var(--closed-b) 6px); border-color: var(--closed-b); cursor: pointer; }
   .closed-label { font-family: 'DM Mono', monospace; font-size: 0.6rem; color: var(--closed-text); text-align: center; letter-spacing: 0.05em; }
   .closed-reason { font-size: 0.65rem; color: var(--closed-sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; margin-top: 1px; }
   .closed-info-box { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 20px 16px; background: var(--closed-bg); border: 1px solid var(--closed-b); border-radius: 10px; }
@@ -530,7 +531,7 @@ const css = `
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 function useTheme() {
-  const [theme, setTheme] = useState(() => localStorage.getItem("vas-theme") || "dark");
+  const [theme, setTheme] = useState(() => localStorage.getItem("vas-theme") || "light");
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -852,9 +853,12 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
             <div className="conflict-warning">
               <span className="conflict-warning-icon">⚠</span>
               <span>
-                <strong>{isLoans ? "In-lab conflict:" : "Equipment loan conflict:"}</strong>{" "}
-                {conflictBooking.teacher} ({conflictBooking.class} · {conflictBooking.subject}) has a{" "}
-                {isLoans ? "lab booking" : "loan booking"} during this slot.
+                {isLoans
+                  ? conflictBooking.status === "closed"
+                    ? "The lab is closed for this period. You may still be able to borrow equipment. Check with admin before booking."
+                    : `${conflictBooking.teacher} has booked the lab during this period. Check that they are not using the equipment you need before booking.`
+                  : `${conflictBooking.teacher} has booked an equipment loan for this period. Check that they are not using the equipment you need before booking.`
+                }
               </span>
             </div>
           )}
@@ -904,16 +908,22 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
             <>
             <div className="field-group">
             <label className="field-label">Teacher Name <span className="required">*</span></label>
-            <input className="field-input" value={form.teacher} onChange={upd("teacher")} placeholder="e.g. Ms. Nguyen" />
+            <input className="field-input" value={form.teacher} onChange={upd("teacher")} placeholder="e.g. Ms. Nguyen"
+              readOnly={isConfirmed && !isAdmin}
+              style={isConfirmed && !isAdmin ? { opacity: 0.5, cursor: "not-allowed" } : {}} />
           </div>
           <div className="row-2">
             <div className="field-group">
               <label className="field-label">Class <span className="required">*</span></label>
-              <input className="field-input" value={form.class} onChange={upd("class")} placeholder="e.g. 8A" />
+              <input className="field-input" value={form.class} onChange={upd("class")} placeholder="e.g. 8A"
+                readOnly={isConfirmed && !isAdmin}
+                style={isConfirmed && !isAdmin ? { opacity: 0.5, cursor: "not-allowed" } : {}} />
             </div>
             <div className="field-group">
               <label className="field-label">Subject <span className="required">*</span></label>
-              <input className="field-input" value={form.subject} onChange={upd("subject")} placeholder="e.g. Computing" />
+              <input className="field-input" value={form.subject} onChange={upd("subject")} placeholder="e.g. Computing"
+                readOnly={isConfirmed && !isAdmin}
+                style={isConfirmed && !isAdmin ? { opacity: 0.5, cursor: "not-allowed" } : {}} />
             </div>
           </div>
 
@@ -1400,7 +1410,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
   };
 
   const weekSlots = bookings[wk] || {};
-  const mergeMaps = Object.fromEntries(DAYS.map((d) => [d, buildMergeMap(d, weekSlots)]));
+  const mergeMaps = Object.fromEntries(DAYS.map((d) => [d, buildMergeMap(d, weekSlots, isLoans)]));
 
   const pendingCount = Object.values(weekSlots).filter((b) => b.status === "pending").length;
 
@@ -1459,7 +1469,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                   const cross     = getCrossBooking(day, period.id);
                   const isPending = bk?.status === "pending";
                   const isClosed  = bk?.status === "closed";
-                  const color     = isClosed ? "#f87171" : isPending ? "#86efac" : (bk?.color || accentColor);
+                  const color     = isClosed ? "#64748b" : isPending ? "#86efac" : (bk?.color || accentColor);
                   const isSelected = selectMode && isAdmin && bk && selectedSlots.has(slotKey(day, period.id));
 
                   return (
@@ -1514,7 +1524,6 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                                 </div>
                                 <div className="pending-label">⏳ PENDING</div>
                                 <div className="pending-teacher">{bk.teacher} · {bk.class}</div>
-                                {cross && <div className="slot-conflict" style={{ background: "#a3623a" }} />}
                               </>
                             ) : (
                               <>
@@ -1531,14 +1540,20 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                                     {period.label} + {bk.doublePeriodLabel}
                                   </div>
                                 )}
-                                {cross && <div className="slot-conflict" />}
                               </>
                             )
                           ) : (
-                            <div className="conflict-avail-hint">
-                              <div className="slot-avail-text">available</div>
-                              {cross && <div className="conflict-pill">⚠ {isLoans ? "in-lab" : "loan"} booked</div>}
-                            </div>
+                            <>
+                              <div className="slot-badges">
+                                {cross && !isLoans && <span className="slot-conflict-icon">⚠</span>}
+                                {cross && isLoans && cross.status === "closed" && <span style={{ fontSize: "0.62rem", lineHeight: 1 }}>🚫</span>}
+                                {cross && isLoans && cross.status !== "closed" && <span className="slot-conflict-icon">⚠</span>}
+                              </div>
+                              <div className="conflict-avail-hint">
+                                <div className="slot-avail-text">available</div>
+                                {cross && isLoans && <div className="slot-avail-text">{cross.status === "closed" ? "lab closed" : "lab booked"}</div>}
+                              </div>
+                            </>
                           )}
                         </div>
                       )}
@@ -1552,12 +1567,13 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
       </div>
 
       <div className="legend">
-        <div className="legend-item"><div className="leg-dot" style={{ background: "#12191f", border: "1px dashed #1e3a4a" }} />Available</div>
-        <div className="legend-item"><div className="leg-dot" style={{ background: accentColor + "33", border: `1px solid ${accentColor}` }} />Confirmed</div>
+        <div className="legend-item"><div className="leg-dot" style={{ background: "var(--slot-avail)", border: "1px dashed var(--slot-avail-b)" }} />Available</div>
         <div className="legend-item"><div className="leg-pending" />Pending</div>
+        <div className="legend-item"><div className="leg-dot" style={{ background: accentColor + "55", border: `1px solid ${accentColor}` }} />Confirmed</div>
+        <div className="legend-item"><div className="leg-closed" />Closed</div>
         <div className="legend-item"><span style={{ fontSize: "0.85rem" }}>↻</span> Recurring</div>
         <div className="legend-item"><span style={{ fontSize: "0.85rem" }}>↔</span> Double period</div>
-        <div className="legend-item"><div className="leg-conflict" />{isLoans ? "In-lab conflict" : "Loan conflict"}</div>
+        <div className="legend-item"><span style={{ fontSize: "0.85rem", color: "#f97316" }}>⚠</span>{isLoans ? " Lab booked" : " Loan booked"}</div>
         <div style={{ marginLeft: "auto", color: "#334155", fontSize: "0.7rem", fontFamily: "DM Mono, monospace" }}>
           Click any slot to book or view details
         </div>
