@@ -360,8 +360,9 @@ const css = `
   .break-row .period-label { padding-top: 4px; padding-bottom: 4px; }
   .break-row .slot-cell { padding-top: 4px; padding-bottom: 4px; }
   .break-row .period-label .pl-name { color: var(--text6); }
-  .break-slot { height: 36px; border-radius: 6px; background: var(--break-slot); border: 1px dashed var(--break-b); display: flex; align-items: center; padding: 0 10px; cursor: pointer; transition: all 0.15s; position: relative; overflow: hidden; gap: 6px; }
-  .break-slot:hover { background: var(--slot-avail-h); border-color: var(--slot-avail-bh); }
+  .break-slot { height: 36px; border-radius: 6px; background: var(--break-slot); border: 1px dashed var(--break-b); display: flex; align-items: center; justify-content: center; padding: 0 10px; cursor: default; transition: all 0.15s; position: relative; overflow: hidden; gap: 6px; }
+  .break-slot.admin-break { cursor: pointer; }
+  .break-slot.admin-break:hover { background: var(--slot-avail-h); border-color: var(--slot-avail-bh); }
   .break-slot.booked { border-style: solid; }
   .break-slot.pending { border-color: var(--slot-pend-b); cursor: default; }
   .break-slot-icons { margin-left: auto; display: flex; align-items: center; gap: 4px; }
@@ -1476,11 +1477,12 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                     <td key={day} className={`slot-cell${isMerged ? " has-merged" : ""}`} rowSpan={rowspan > 1 ? rowspan : undefined}>
                       {period.type === "break" ? (
                         <div
-                          className={`break-slot${bk ? (isClosed ? " closed" : isPending ? " pending" : " booked") : ""}${isMerged ? " merged" : ""}${isSelected ? " selected" : ""}`}
+                          className={`break-slot${bk ? (isClosed ? " closed" : isPending ? " pending" : " booked") : ""}${isMerged ? " merged" : ""}${isSelected ? " selected" : ""}${isAdmin ? " admin-break" : ""}`}
                           style={bk && !isPending && !isClosed ? { borderColor: color, background: color + "22" } : {}}
                           onClick={() => {
-                            if (selectMode && isAdmin && bk) { toggleSlotSelection(day, period.id); return; }
-                            if (bk) setModal({ day, period });
+                            if (!isAdmin) return;
+                            if (selectMode && bk) { toggleSlotSelection(day, period.id); return; }
+                            setModal({ day, period });
                           }}
                         >
                           {bk ? (
@@ -1492,13 +1494,8 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                               <span style={{ fontSize: "0.72rem", color: "#f0f4ff", fontWeight: 600 }}>{bk.teacher} · {bk.class}</span>
                             )
                           ) : (
-                            <span style={{ fontSize: "0.65rem", color: "#2d3748", fontFamily: "DM Mono, monospace" }}>+ book</span>
+                            <span style={{ fontSize: "0.65rem", color: "var(--text6)", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>{period.label.toUpperCase()}</span>
                           )}
-                          <div className="break-slot-icons">
-                            {(bk?.recurId || (isPending && bk?.recurring)) && <span className="break-recur" style={isPending ? { opacity: 0.5 } : {}}>↻</span>}
-                            {bk?.doubleId && <span className="break-recur" style={isPending ? { opacity: 0.5 } : {}}>↔</span>}
-                            {cross && <span style={{ fontSize: "0.7rem", color: isPending ? "#a3623a" : "#f97316" }}>⚠</span>}
-                          </div>
                         </div>
                       ) : (
                         <div
@@ -1693,10 +1690,8 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
     setLoading(true);
     const fetches = [
       dbLoad(inLabKey(lab, wk)).then((d) => setInLab((p) => ({ ...p, [wk]: d }))),
+      dbLoad(loansKey(lab, wk)).then((d) => setLoans((p) => ({ ...p, [wk]: d }))),
     ];
-    if (lab === "dt") {
-      fetches.push(dbLoad(loansKey(lab, wk)).then((d) => setLoans((p) => ({ ...p, [wk]: d }))));
-    }
     Promise.all(fetches).then(() => setLoading(false));
   }, [lab, wk]);
 
@@ -1708,11 +1703,11 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
   const weekLabel = `${fmtDate(monday)} – ${fmtDate(fri)}`;
   const isCurrentWeek = weekKey(getMondayOfWeek(new Date())) === wk;
 
-  const conflictCount = lab === "dt" ? (() => {
+  const conflictCount = (() => {
     const il = inLabBookings[wk] || {};
     const lo = loansBookings[wk] || {};
     return Object.keys(il).filter((k) => lo[k] && il[k].status !== "pending" && lo[k].status !== "pending").length;
-  })() : 0;
+  })();
 
   const pendingInLab  = Object.values(inLabBookings[wk]  || {}).filter((b) => b.status === "pending").length;
   const pendingLoans  = Object.values(loansBookings[wk]  || {}).filter((b) => b.status === "pending").length;
@@ -1763,13 +1758,11 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
           {isAdmin && pendingInLab > 0 && <span className="tab-pending-badge">⏳ {pendingInLab}</span>}
           {conflictCount > 0 && tab !== "inlab" && <span className="tab-conflict-badge">⚠ {conflictCount}</span>}
         </button>
-        {lab === "dt" && (
-          <button className={`tab-btn${tab === "loans" ? " active" : ""}`} onClick={() => setTab("loans")}>
-            Equipment Loans
-            {isAdmin && pendingLoans > 0 && <span className="tab-pending-badge">⏳ {pendingLoans}</span>}
-            {conflictCount > 0 && tab !== "loans" && <span className="tab-conflict-badge">⚠ {conflictCount}</span>}
-          </button>
-        )}
+        <button className={`tab-btn${tab === "loans" ? " active" : ""}`} onClick={() => setTab("loans")}>
+          Equipment Loans
+          {isAdmin && pendingLoans > 0 && <span className="tab-pending-badge">⏳ {pendingLoans}</span>}
+          {conflictCount > 0 && tab !== "loans" && <span className="tab-conflict-badge">⚠ {conflictCount}</span>}
+        </button>
       </div>
 
       {loading ? (
@@ -1777,7 +1770,7 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
       ) : tab === "inlab" ? (
         <TimetableGrid
           accentColor={labInfo.color} bookings={inLabBookings} setBookings={setInLab}
-          crossBookings={lab === "dt" ? loansBookings : null}
+          crossBookings={loansBookings}
           monday={monday} dbKeyFn={inLabKey} lab={lab} isLoans={false}
           onSaveState={setSaveState} isAdmin={isAdmin} onToast={showToast}
         />
@@ -1862,7 +1855,7 @@ export default function App() {
       <div className="app">
         <div className="home">
           <div className="home-title">
-            <h1>Lab Booking</h1>
+            <h1>SALA Lab Booking</h1>
             <p>VAS Secondary · Select a lab to view schedule</p>
           </div>
           <div className="lab-cards">
@@ -1874,7 +1867,7 @@ export default function App() {
                 onClick={() => setActiveLab(lab.id)}>
                 <div className="icon">{lab.icon}</div>
                 <div className="name">{lab.name}</div>
-                <div className="sub">{lab.id === "dt" ? "Design & Technology" : "Audio-Visual"}</div>
+                <div className="sub">{lab.id === "dt" ? "Design Thinking" : "Audio-Visual"}</div>
               </div>
             ))}
           </div>
