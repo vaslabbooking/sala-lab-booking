@@ -688,7 +688,7 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
     teacher: "", class: "", subject: "",
     activityOverview: "", requiredEquipment: "",
     numStudents: "", numGroups: "",
-    color: DEFAULT_COLOR, recurring: false, recurWeeks: 8,
+    color: DEFAULT_COLOR, recurring: false, recurWeeks: 3,
     ...booking,
   });
   const [delMode, setDelMode]         = useState(false);
@@ -954,12 +954,15 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
                 <div className="recur-options">
                   <div className="recur-row">
                     <span className="recur-hint">Repeat for</span>
-                    <input className="recur-weeks-input" type="number" min="2" max="40" value={form.recurWeeks}
-                      onChange={(e) => setForm((f) => ({ ...f, recurWeeks: Math.max(2, Math.min(40, +e.target.value || 2)) }))} />
+                    <input className="recur-weeks-input" type="number" min="2" max="3" value={form.recurWeeks}
+                      onChange={(e) => setForm((f) => ({ ...f, recurWeeks: Math.max(2, Math.min(3, +e.target.value || 2)) }))} />
                     <span className="recur-hint">weeks</span>
                   </div>
                   <div className="recur-hint" style={{ color: "#3b5268" }}>
                     Creates {form.recurWeeks} bookings from the current week{isAdmin ? "" : " (all require approval)"}
+                  </div>
+                  <div className="recur-hint" style={{ color: "var(--text5)" }}>
+                    To book for longer than 3 weeks, please contact admin.
                   </div>
                 </div>
               )}
