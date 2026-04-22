@@ -131,7 +131,7 @@ exports.handler = async (event) => {
     const rejectUrl  = `${SITE_URL}/?reject=${token}&key=${encodeURIComponent(pendingKey)}`;
 
     const labName   = LAB_NAMES[lab] || lab;
-    const typeLabel = bookingType === "loans" ? "Equipment Loan" : "In-Lab Booking";
+    const typeLabel = bookingType === "loans" ? "Equipment Loan" : bookingType === "primary" ? "Primary Lab Booking" : "Secondary Lab Booking";
 
     await sendEmail({
       to: LAB_EMAILS[lab],
@@ -185,7 +185,7 @@ exports.handler = async (event) => {
     const slotKeys = [slotKey];
     if (doubleSlotKey) slotKeys.push(doubleSlotKey);
 
-    const storageKeyFn = (wkk) => bookingType === "loans" ? `loans_${lab}_${wkk}` : `bookings_${lab}_${wkk}`;
+    const storageKeyFn = (wkk) => bookingType === "loans" ? `loans_${lab}_${wkk}` : bookingType === "primary" ? `primary_${lab}_${wkk}` : `bookings_${lab}_${wkk}`;
 
     if (booking.recurring && booking.recurWeeks > 1) {
       const monday = new Date(weekKey);
@@ -241,7 +241,7 @@ exports.handler = async (event) => {
     const slotKeys = [slotKey];
     if (doubleSlotKey) slotKeys.push(doubleSlotKey);
 
-    const storageKeyFn = (wkk) => bookingType === "loans" ? `loans_${lab}_${wkk}` : `bookings_${lab}_${wkk}`;
+    const storageKeyFn = (wkk) => bookingType === "loans" ? `loans_${lab}_${wkk}` : bookingType === "primary" ? `primary_${lab}_${wkk}` : `bookings_${lab}_${wkk}`;
 
     if (booking?.recurring && booking?.recurWeeks > 1) {
       const monday = new Date(weekKey);

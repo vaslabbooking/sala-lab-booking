@@ -110,6 +110,24 @@ const PERIODS = [
   { id: "p9",     label: "ECA",      time: "15:45 – 16:30", type: "lesson" },
 ];
 
+const PRIMARY_PERIODS = [
+  { id: "pp1",    label: "Period 1", time: "07:45 – 08:20", type: "lesson" },
+  { id: "pp2",    label: "Period 2", time: "08:20 – 08:55", type: "lesson" },
+  { id: "pbreak1",label: "Break",   time: "08:55 – 09:15", type: "break"  },
+  { id: "pp3",    label: "Period 3", time: "09:15 – 09:50", type: "lesson" },
+  { id: "pp4",    label: "Period 4", time: "09:50 – 10:25", type: "lesson" },
+  { id: "pp5",    label: "Period 5", time: "10:25 – 11:00", type: "lesson" },
+  { id: "plunch", label: "Lunch",   time: "11:00 – 13:00", type: "break"  },
+  { id: "pp6",    label: "Period 6", time: "13:00 – 13:35", type: "lesson" },
+  { id: "pp7",    label: "Period 7", time: "13:35 – 14:10", type: "lesson" },
+  { id: "pbreak2",label: "Break",   time: "14:10 – 14:30", type: "break"  },
+  { id: "pp8",    label: "Period 8", time: "14:30 – 15:05", type: "lesson" },
+  { id: "pp9",    label: "Period 9", time: "15:05 – 15:40", type: "lesson" },
+  { id: "pp10",   label: "Period 10",time: "15:40 – 16:25", type: "lesson" },
+];
+
+const PRIMARY_UNAVAILABLE = new Set(["pp1", "pp5", "pp7", "pp10"]);
+
 const LABS = {
   dt: { id: "dt", name: "DT Lab",  icon: "⚙️", color: "#e67e22", techEmail: "linh.thi.pham@vas.edu.vn",  techName: "Linh" },
   av: { id: "av", name: "AV Lab",  icon: "🎬", color: "#2980b9", techEmail: "vu.long.nguyen@vas.edu.vn", techName: "Vu Long" },
@@ -152,33 +170,34 @@ function weekKey(monday) {
   return `${y}-${m}-${d}`;
 }
 function slotKey(day, periodId) { return `${day}_${periodId}`; }
-const inLabKey = (lab, wk) => `bookings_${lab}_${wk}`;
-const loansKey = (lab, wk) => `loans_${lab}_${wk}`;
+const inLabKey     = (lab, wk) => `bookings_${lab}_${wk}`;
+const loansKey     = (lab, wk) => `loans_${lab}_${wk}`;
+const primaryKey   = (lab, wk) => `primary_${lab}_${wk}`;
 
-function getNextLessonPeriod(periodId) {
-  const idx = PERIODS.findIndex((p) => p.id === periodId);
+function getNextLessonPeriod(periodId, periods = PERIODS) {
+  const idx = periods.findIndex((p) => p.id === periodId);
   if (idx === -1) return null;
-  for (let i = idx + 1; i < PERIODS.length; i++) {
-    if (PERIODS[i].type === "lesson") return PERIODS[i];
+  for (let i = idx + 1; i < periods.length; i++) {
+    if (periods[i].type === "lesson") return periods[i];
   }
   return null;
 }
 
 // Build a per-day map of which cells to skip (consumed by rowspan) or span
-function buildMergeMap(day, weekSlots, isLoans = false) {
+function buildMergeMap(day, weekSlots, isLoans = false, periods = PERIODS) {
   const map = {};
   let i = 0;
-  while (i < PERIODS.length) {
-    const period = PERIODS[i];
+  while (i < periods.length) {
+    const period = periods[i];
     const bk = weekSlots?.[slotKey(day, period.id)];
 
     // Merge consecutive closed slots with the same reason — only on the lab's own tab
     if (!isLoans && bk?.status === "closed") {
       let span = 1;
-      for (let j = i + 1; j < PERIODS.length; j++) {
-        const nextBk = weekSlots?.[slotKey(day, PERIODS[j].id)];
+      for (let j = i + 1; j < periods.length; j++) {
+        const nextBk = weekSlots?.[slotKey(day, periods[j].id)];
         if (nextBk?.status === "closed" && nextBk?.reason === bk.reason) {
-          map[PERIODS[j].id] = { skip: true };
+          map[periods[j].id] = { skip: true };
           span++;
         } else { break; }
       }
@@ -189,7 +208,7 @@ function buildMergeMap(day, weekSlots, isLoans = false) {
 
     // Merge double period only when the two lessons are immediately adjacent (no break row between)
     if (bk?.doubleId && !bk?.isDoubleSecond && period.type === "lesson") {
-      const nextPeriod = PERIODS[i + 1];
+      const nextPeriod = periods[i + 1];
       if (nextPeriod && nextPeriod.type === "lesson") {
         const nextBk = weekSlots?.[slotKey(day, nextPeriod.id)];
         if (nextBk?.doubleId === bk.doubleId && nextBk?.isDoubleSecond) {
@@ -346,7 +365,7 @@ const css = `
   .tabs { display: flex; padding: 0 24px; background: var(--bg3); border-bottom: 1px solid var(--border); }
   .tab-btn { background: none; border: none; border-bottom: 2px solid transparent; color: var(--text4); padding: 12px 20px; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 0.85rem; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; transition: all 0.15s; display: flex; align-items: center; gap: 7px; }
   .tab-btn:hover { color: var(--text3); }
-  .tab-btn.active { color: var(--text2); border-bottom-color: var(--accent); }
+  .tab-btn.active { border-bottom-color: currentColor; }
   .tab-conflict-badge { background: #7c2d12; color: #fca98d; font-size: 0.65rem; font-family: 'DM Mono', monospace; padding: 2px 6px; border-radius: 10px; line-height: 1.4; }
   .tab-pending-badge { background: #1e3a1e; color: #86efac; font-size: 0.65rem; font-family: 'DM Mono', monospace; padding: 2px 6px; border-radius: 10px; line-height: 1.4; }
 
@@ -497,6 +516,8 @@ const css = `
   .slot.merged.booked { justify-content: flex-start; }
 
   /* Closed slots */
+  .slot.primary-unavail { background: repeating-linear-gradient(-45deg, var(--bg2), var(--bg2) 6px, var(--border) 6px, var(--border) 7px); border: 1px solid var(--border); cursor: default; opacity: 0.55; }
+  .slot.primary-unavail:hover { filter: none; }
   .slot.closed { background: repeating-linear-gradient(-45deg, var(--closed-bg), var(--closed-bg) 5px, var(--closed-b) 5px, var(--closed-b) 6px); border: 1px solid var(--closed-b); cursor: pointer; }
   .slot.closed:hover { filter: brightness(1.06); }
   .break-slot.closed { background: repeating-linear-gradient(-45deg, var(--closed-bg), var(--closed-bg) 5px, var(--closed-b) 5px, var(--closed-b) 6px); border-color: var(--closed-b); cursor: pointer; }
@@ -702,7 +723,7 @@ function ChangePasswordPanel({ adminPassword, onToast }) {
 
 // ─── Booking Modal ────────────────────────────────────────────────────────────
 
-function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave, onAdminSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, isLoans, isAdmin, weekBookings }) {
+function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave, onAdminSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, isLoans, isPrimary, isAdmin, weekBookings, periods = PERIODS }) {
   const isNew       = !booking?.teacher && booking?.status !== "closed";
   const isPending   = booking?.status === "pending";
   const isConfirmed = booking?.status === "confirmed";
@@ -723,13 +744,13 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
   const [closureReason, setClosureReason]   = useState("");
   const [closureThrough, setClosureThrough] = useState("");
 
-  const nextPeriod        = isNew ? getNextLessonPeriod(period.id) : null;
+  const nextPeriod        = isNew ? getNextLessonPeriod(period.id, periods) : null;
   const nextKey           = nextPeriod ? slotKey(day, nextPeriod.id) : null;
   const nextAlreadyBooked = nextKey && weekBookings?.[nextKey];
 
   // Periods after clicked one (for closure spread)
-  const periodIdx    = PERIODS.findIndex(p => p.id === period.id);
-  const periodsAfter = PERIODS.slice(periodIdx + 1);
+  const periodIdx    = periods.findIndex(p => p.id === period.id);
+  const periodsAfter = periods.slice(periodIdx + 1);
 
   const upd = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const canSave = form.teacher.trim() && form.class.trim() && form.subject.trim()
@@ -1064,7 +1085,7 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
 
 // ─── Timetable Grid ───────────────────────────────────────────────────────────
 
-function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, monday, dbKeyFn, lab, isLoans, onSaveState, isAdmin, onToast }) {
+function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, monday, dbKeyFn, lab, isLoans, isPrimary, onSaveState, isAdmin, onToast, periods = PERIODS }) {
   const [modal, setModal]             = useState(null);
   const [selectMode, setSelectMode]   = useState(false);
   const [selectedSlots, setSelectedSlots] = useState(new Set());
@@ -1086,7 +1107,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
     const { double, recurring, recurWeeks, ...rest } = form;
     const key = slotKey(day, period.id);
 
-    const nextPeriod = double ? getNextLessonPeriod(period.id) : null;
+    const nextPeriod = double ? getNextLessonPeriod(period.id, periods) : null;
     const key2 = nextPeriod ? slotKey(day, nextPeriod.id) : null;
     const doubleId = double && nextPeriod ? `double_${Date.now()}_${key}` : undefined;
 
@@ -1132,13 +1153,13 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
     let startIdx, endIdx;
     if (throughPeriodId === "wholeday") {
       startIdx = 0;
-      endIdx = PERIODS.length - 1;
+      endIdx = periods.length - 1;
     } else {
-      startIdx = PERIODS.findIndex(p => p.id === period.id);
-      endIdx = throughPeriodId ? PERIODS.findIndex(p => p.id === throughPeriodId) : startIdx;
+      startIdx = periods.findIndex(p => p.id === period.id);
+      endIdx = throughPeriodId ? periods.findIndex(p => p.id === throughPeriodId) : startIdx;
     }
     for (let i = startIdx; i <= endIdx; i++) {
-      const p = PERIODS[i];
+      const p = periods[i];
       existing[slotKey(day, p.id)] = { status: "closed", reason, day, periodLabel: p.label, periodTime: p.time };
     }
     const nextAll = { ...bookings, [wk]: existing };
@@ -1156,7 +1177,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
     const key = slotKey(day, period.id);
 
     // For double period, find the next lesson period
-    const nextPeriod = double ? getNextLessonPeriod(period.id) : null;
+    const nextPeriod = double ? getNextLessonPeriod(period.id, periods) : null;
     const key2 = nextPeriod ? slotKey(day, nextPeriod.id) : null;
     const doubleId = double && nextPeriod ? `double_${Date.now()}_${key}` : undefined;
 
@@ -1201,11 +1222,12 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
 
     // Generate token, store it so approve/reject links work
     const token = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    const pendingStorageKey = `pending_${lab}_${wk}_${key}_${isLoans ? "loans" : "inlab"}`;
+    const bkType = isLoans ? "loans" : isPrimary ? "primary" : "inlab";
+    const pendingStorageKey = `pending_${lab}_${wk}_${key}_${bkType}`;
     await dbSave(pendingStorageKey, {
       token, lab, weekKey: wk, slotKey: key,
       booking: pendingBooking,
-      bookingType: isLoans ? "loans" : "inlab",
+      bookingType: bkType,
       ...(key2 ? { doubleSlotKey: key2 } : {}),
     });
 
@@ -1223,10 +1245,11 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
         : period.time,
     };
 
+    const emailTypeLabel = isLoans ? "Equipment Loan" : isPrimary ? "Primary Lab Booking" : "Secondary Lab Booking";
     sendApprovalEmail({
       toEmail:     labInfo.techEmail,
       labName:     labInfo.name,
-      bookingType: isLoans ? "Equipment Loan" : "In-Lab Booking",
+      bookingType: emailTypeLabel,
       booking:     emailBooking,
       approveUrl,
       rejectUrl,
@@ -1434,7 +1457,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
   };
 
   const weekSlots = bookings[wk] || {};
-  const mergeMaps = Object.fromEntries(DAYS.map((d) => [d, buildMergeMap(d, weekSlots, isLoans)]));
+  const mergeMaps = Object.fromEntries(DAYS.map((d) => [d, buildMergeMap(d, weekSlots, isLoans, periods)]));
 
   const pendingCount = Object.values(weekSlots).filter((b) => b.status === "pending").length;
 
@@ -1477,7 +1500,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
             </tr>
           </thead>
           <tbody>
-            {PERIODS.map((period) => (
+            {periods.map((period) => (
               <tr key={period.id} className={period.type === "break" ? "break-row" : ""}>
                 <td className="period-label">
                   <div className="pl-name">{period.label}</div>
@@ -1495,6 +1518,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                   const isClosed  = bk?.status === "closed";
                   const color     = isClosed ? "#64748b" : isPending ? "#86efac" : (bk?.color || accentColor);
                   const isSelected = selectMode && isAdmin && bk && selectedSlots.has(slotKey(day, period.id));
+                  const isPrimaryUnavail = isPrimary && PRIMARY_UNAVAILABLE.has(period.id);
 
                   return (
                     <td key={day} className={`slot-cell${isMerged ? " has-merged" : ""}`} rowSpan={rowspan > 1 ? rowspan : undefined}>
@@ -1522,14 +1546,15 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                         </div>
                       ) : (
                         <div
-                          className={`slot${bk ? (isClosed ? " closed" : isPending ? " pending" : " booked") : " available"}${isMerged ? " merged" : ""}${isSelected ? " selected" : ""}`}
-                          style={bk && !isPending && !isClosed ? { background: color + "22", borderColor: color } : {}}
+                          className={`slot${isPrimaryUnavail ? " primary-unavail" : bk ? (isClosed ? " closed" : isPending ? " pending" : " booked") : " available"}${isMerged ? " merged" : ""}${isSelected ? " selected" : ""}`}
+                          style={!isPrimaryUnavail && bk && !isPending && !isClosed ? { background: color + "22", borderColor: color } : {}}
                           onClick={() => {
+                            if (isPrimaryUnavail) return;
                             if (selectMode && isAdmin && bk) { toggleSlotSelection(day, period.id); return; }
                             setModal({ day, period });
                           }}
                         >
-                          {bk ? (
+                          {isPrimaryUnavail ? null : bk ? (
                             isClosed ? (
                               <>
                                 <div className="closed-label">🚫 CLOSED</div>
@@ -1614,8 +1639,10 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
           onAdminApprove={handleAdminApprove}
           onAdminReject={handleAdminReject}
           isLoans={isLoans}
+          isPrimary={isPrimary}
           isAdmin={isAdmin}
           weekBookings={bookings[wk] || {}}
+          periods={periods}
         />
       )}
     </>
@@ -1694,9 +1721,10 @@ function ApprovalScreen({ action, token, pendingKey, accentColor }) {
 function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onToggleTheme }) {
   const labInfo = LABS[lab];
   const [monday, setMonday]       = useState(() => getMondayOfWeek(new Date()));
-  const [inLabBookings, setInLab] = useState({});
-  const [loansBookings, setLoans] = useState({});
-  const [tab, setTab]             = useState("inlab");
+  const [inLabBookings, setInLab]       = useState({});
+  const [loansBookings, setLoans]       = useState({});
+  const [primaryBookings, setPrimary]   = useState({});
+  const [tab, setTab]                   = useState("inlab");
   const [loading, setLoading]     = useState(true);
   const [saveState, setSaveState] = useState("idle");
   const [toast, setToast]         = useState("");
@@ -1714,6 +1742,7 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
     const fetches = [
       dbLoad(inLabKey(lab, wk)).then((d) => setInLab((p) => ({ ...p, [wk]: d }))),
       dbLoad(loansKey(lab, wk)).then((d) => setLoans((p) => ({ ...p, [wk]: d }))),
+      dbLoad(primaryKey(lab, wk)).then((d) => setPrimary((p) => ({ ...p, [wk]: d }))),
     ];
     Promise.all(fetches).then(() => setLoading(false));
   }, [lab, wk]);
@@ -1732,9 +1761,10 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
     return Object.keys(il).filter((k) => lo[k] && il[k].status !== "pending" && lo[k].status !== "pending").length;
   })();
 
-  const pendingInLab  = Object.values(inLabBookings[wk]  || {}).filter((b) => b.status === "pending").length;
-  const pendingLoans  = Object.values(loansBookings[wk]  || {}).filter((b) => b.status === "pending").length;
-  const totalPending  = pendingInLab + pendingLoans;
+  const pendingInLab  = Object.values(inLabBookings[wk]   || {}).filter((b) => b.status === "pending").length;
+  const pendingLoans  = Object.values(loansBookings[wk]   || {}).filter((b) => b.status === "pending").length;
+  const pendingPrimary = Object.values(primaryBookings[wk] || {}).filter((b) => b.status === "pending").length;
+  const totalPending  = pendingInLab + pendingLoans + pendingPrimary;
 
   return (
     <div className="app" style={{ "--accent": labInfo.color }}>
@@ -1776,12 +1806,19 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
       )}
 
       <div className="tabs">
-        <button className={`tab-btn${tab === "inlab" ? " active" : ""}`} onClick={() => setTab("inlab")}>
-          In-Lab Timetable
+        <button className={`tab-btn${tab === "inlab" ? " active" : ""}`} onClick={() => setTab("inlab")}
+          style={tab === "inlab" ? { color: "#3b82f6", background: "rgba(59,130,246,0.08)" } : {}}>
+          Secondary Lab Booking
           {isAdmin && pendingInLab > 0 && <span className="tab-pending-badge">⏳ {pendingInLab}</span>}
           {conflictCount > 0 && tab !== "inlab" && <span className="tab-conflict-badge">⚠ {conflictCount}</span>}
         </button>
-        <button className={`tab-btn${tab === "loans" ? " active" : ""}`} onClick={() => setTab("loans")}>
+        <button className={`tab-btn${tab === "primary" ? " active" : ""}`} onClick={() => setTab("primary")}
+          style={tab === "primary" ? { color: "#ec4899", background: "rgba(236,72,153,0.08)" } : {}}>
+          Primary Lab Booking
+          {isAdmin && pendingPrimary > 0 && <span className="tab-pending-badge">⏳ {pendingPrimary}</span>}
+        </button>
+        <button className={`tab-btn${tab === "loans" ? " active" : ""}`} onClick={() => setTab("loans")}
+          style={tab === "loans" ? { color: "#f97316", background: "rgba(249,115,22,0.08)" } : {}}>
           Equipment Loans
           {isAdmin && pendingLoans > 0 && <span className="tab-pending-badge">⏳ {pendingLoans}</span>}
           {conflictCount > 0 && tab !== "loans" && <span className="tab-conflict-badge">⚠ {conflictCount}</span>}
@@ -1796,6 +1833,14 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
           crossBookings={loansBookings}
           monday={monday} dbKeyFn={inLabKey} lab={lab} isLoans={false}
           onSaveState={setSaveState} isAdmin={isAdmin} onToast={showToast}
+        />
+      ) : tab === "primary" ? (
+        <TimetableGrid
+          accentColor={labInfo.color} bookings={primaryBookings} setBookings={setPrimary}
+          crossBookings={null}
+          monday={monday} dbKeyFn={primaryKey} lab={lab} isLoans={false} isPrimary={true}
+          onSaveState={setSaveState} isAdmin={isAdmin} onToast={showToast}
+          periods={PRIMARY_PERIODS}
         />
       ) : (
         <TimetableGrid
