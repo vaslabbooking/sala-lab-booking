@@ -1,0 +1,21 @@
+name: Turso Heartbeat
+
+on:
+  schedule:
+    # Runs every Monday at 08:00 UTC (3pm Vietnam time)
+    # Keeps the database active through school holidays
+    - cron: '0 8 * * 1'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Turso database
+        run: |
+          curl -sf -X POST "${{ secrets.TURSO_URL }}/v2/pipeline" \
+            -H "Authorization: Bearer ${{ secrets.TURSO_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"requests": [{"type": "execute", "stmt": {"sql": "SELECT COUNT(*) FROM bookings"}}, {"type": "close"}]}' \
+            | jq '.results[0].response.result.rows'
+          echo "Heartbeat OK"
