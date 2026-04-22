@@ -1589,11 +1589,19 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
       for (let offset = -3; offset <= 3; offset++) {
         weeksToCheck.add(weekKey(addWeeks(monday, offset)));
       }
+      const skippedWeeks = [];
       for (const wkk of weeksToCheck) {
         const slots = nextAll[wkk] || (await dbLoad(dbKeyFn(lab, wkk)));
         if (!slots) continue;
         const slotBk = slots[srcKey];
         if (!slotBk || slotBk.recurId !== bk.recurId) continue;
+        // Check target slot is free (allow if occupied by the same recurring series)
+        const targetOccupant = slots[targetKey];
+        const targetOccupant2 = targetDoubleKey ? slots[targetDoubleKey] : null;
+        const targetBlocked =
+          (targetOccupant && targetOccupant.recurId !== bk.recurId) ||
+          (targetOccupant2 && targetOccupant2.recurId !== bk.recurId);
+        if (targetBlocked) { skippedWeeks.push(wkk); continue; }
         const slotPartner = srcDoubleKey ? slots[srcDoubleKey] : null;
         const updated = { ...slots };
         delete updated[srcKey];
@@ -1604,6 +1612,9 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
         }
         nextAll[wkk] = updated;
         await persist(wkk, updated);
+      }
+      if (skippedWeeks.length > 0) {
+        onToast(`⚠ ${skippedWeeks.length} week${skippedWeeks.length > 1 ? "s" : ""} skipped — target slot already booked`);
       }
     } else {
       const srcSlots = { ...(nextAll[wk] || {}) };
