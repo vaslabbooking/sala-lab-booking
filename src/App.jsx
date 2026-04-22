@@ -746,7 +746,7 @@ function ChangePasswordPanel({ adminPassword, onToast }) {
 
 // ─── Booking Modal ────────────────────────────────────────────────────────────
 
-function SlotModal({ accentColor, day, period, booking, conflictBooking, conflictBooking2, conflictBooking2Name, onSave, onAdminSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, onAdminMove, isLoans, isPrimary, isAdmin, weekBookings, allBookings, monday, periods = PERIODS }) {
+function SlotModal({ accentColor, day, period, booking, conflictBooking, conflictBooking2, conflictBooking2Name, onSave, onAdminSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, onAdminMove, isLoans, isPrimary, isAdmin, weekBookings, allBookings, monday, allCrossTabBookings, crossTabPeriodMapForMove, allCross2Bookings, cross2PeriodMapForMove, periods = PERIODS }) {
   const isNew       = !booking?.teacher && booking?.status !== "closed";
   const isPending   = booking?.status === "pending";
   const isConfirmed = booking?.status === "confirmed";
@@ -781,6 +781,20 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
   const moveSrcKey  = slotKey(day, period.id);
   const moveSrcKey2 = booking?.doublePartnerKey || null;
 
+  const isCrossTabTaken = (pid) => {
+    // Check cross-tab booking (e.g. primary booking blocking secondary slot)
+    if (allCrossTabBookings && crossTabPeriodMapForMove) {
+      const crossPid = crossTabPeriodMapForMove[pid];
+      if (crossPid && allCrossTabBookings[targetMoveWk]?.[slotKey(moveDay, crossPid)]) return true;
+    }
+    // Check second cross-tab (loans: primary bookings)
+    if (allCross2Bookings && cross2PeriodMapForMove) {
+      const cross2Pid = cross2PeriodMapForMove[pid];
+      if (cross2Pid && allCross2Bookings[targetMoveWk]?.[slotKey(moveDay, cross2Pid)]) return true;
+    }
+    return false;
+  };
+
   const movablePeriods = periods
     .filter(p => p.type === "lesson")
     .filter(p => {
@@ -788,6 +802,7 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
       const existing = targetMoveBks[k];
       const isSrc = moveWeekOffset === 0 && (k === moveSrcKey || k === moveSrcKey2);
       if (existing && !isSrc) return false;
+      if (isCrossTabTaken(p.id)) return false;
       if (isDoubleFirst) {
         const nxt = getNextLessonPeriod(p.id, periods);
         if (!nxt) return false;
@@ -795,6 +810,7 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
         const nxtExisting = targetMoveBks[nxtK];
         const nxtIsSrc = moveWeekOffset === 0 && (nxtK === moveSrcKey || nxtK === moveSrcKey2);
         if (nxtExisting && !nxtIsSrc) return false;
+        if (isCrossTabTaken(nxt.id)) return false;
       }
       return true;
     });
@@ -1568,8 +1584,15 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
     const nextAll = { ...bookings };
 
     if (recurMode === "all" && bk.recurId) {
-      for (const [wkk, slots] of Object.entries(nextAll)) {
-        const slotBk = slots?.[srcKey];
+      // Build the set of weeks to check — loaded state + DB weeks surrounding current
+      const weeksToCheck = new Set(Object.keys(nextAll));
+      for (let offset = -3; offset <= 3; offset++) {
+        weeksToCheck.add(weekKey(addWeeks(monday, offset)));
+      }
+      for (const wkk of weeksToCheck) {
+        const slots = nextAll[wkk] || (await dbLoad(dbKeyFn(lab, wkk)));
+        if (!slots) continue;
+        const slotBk = slots[srcKey];
         if (!slotBk || slotBk.recurId !== bk.recurId) continue;
         const slotPartner = srcDoubleKey ? slots[srcDoubleKey] : null;
         const updated = { ...slots };
@@ -1874,6 +1897,10 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
           onAdminMove={handleAdminMove}
           allBookings={bookings}
           monday={monday}
+          allCrossTabBookings={crossTabBookings}
+          crossTabPeriodMapForMove={periodMap}
+          allCross2Bookings={cross2Bookings}
+          cross2PeriodMapForMove={cross2BookingsPeriodMap}
           onSave={handleSave}
           onAdminSave={handleAdminDirectSave}
           onClosure={handleClosure}
