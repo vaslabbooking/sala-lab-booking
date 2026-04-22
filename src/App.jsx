@@ -27,7 +27,8 @@ async function dbLoad(key) {
   const result = await tursoExec("SELECT data FROM bookings WHERE storage_key = ?", [key]);
   const row = result?.rows?.[0];
   if (!row) return {};
-  try { return JSON.parse(row[0]); } catch { return {}; }
+  const raw = row[0]?.value ?? row[0];
+  try { return JSON.parse(raw); } catch { return {}; }
 }
 
 async function dbSave(key, data) {
