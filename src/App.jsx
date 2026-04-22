@@ -121,12 +121,17 @@ const PRIMARY_PERIODS = [
   { id: "pp6",    label: "Period 6", time: "13:00 – 13:35", type: "lesson" },
   { id: "pp7",    label: "Period 7", time: "13:35 – 14:10", type: "lesson" },
   { id: "pbreak2",label: "Break",   time: "14:10 – 14:30", type: "break"  },
-  { id: "pp8",    label: "Period 8", time: "14:30 – 15:05", type: "lesson" },
-  { id: "pp9",    label: "Period 9", time: "15:05 – 15:40", type: "lesson" },
-  { id: "pp10",   label: "Period 10",time: "15:40 – 16:25", type: "lesson" },
+  { id: "pp8",    label: "Period 8*",  time: "14:30 – 15:00", type: "lesson" },
+  { id: "pp9",    label: "Period 9",  time: "15:05 – 15:40", type: "lesson" },
+  { id: "pp10",   label: "Period 10*",time: "15:45 – 16:25", type: "lesson" },
 ];
 
-const PRIMARY_UNAVAILABLE = new Set(["pp1", "pp5", "pp7", "pp10"]);
+const PRIMARY_UNAVAILABLE = new Set(["pp1", "pp5", "pp7"]);
+
+// Which primary period maps to which secondary period (and vice versa)
+// pp8 is omitted — it hits secondary afternoon break, no interplay needed
+const PRIMARY_TO_SECONDARY = { pp2: "p2", pp3: "p3", pp4: "p4", pp6: "p6", pp9: "p8", pp10: "p9" };
+const SECONDARY_TO_PRIMARY = { p2: "pp2", p3: "pp3", p4: "pp4", p6: "pp6", p8: "pp9",  p9: "pp10" };
 
 const LABS = {
   dt: { id: "dt", name: "DT Lab",  icon: "⚙️", color: "#e67e22", techEmail: "linh.thi.pham@vas.edu.vn",  techName: "Linh" },
@@ -518,6 +523,9 @@ const css = `
   /* Closed slots */
   .slot.primary-unavail { background: repeating-linear-gradient(-45deg, var(--bg2), var(--bg2) 6px, var(--border) 6px, var(--border) 7px); border: 1px solid var(--border); cursor: default; opacity: 0.55; }
   .slot.primary-unavail:hover { filter: none; }
+  .slot.cross-tab-blocked { background: rgba(167,139,250,0.12); border: 1px solid rgba(167,139,250,0.4); cursor: default; }
+  .slot.cross-tab-blocked:hover { filter: none; }
+  .cross-tab-label { font-family: 'DM Mono', monospace; font-size: 0.6rem; color: #a78bfa; text-align: center; letter-spacing: 0.05em; line-height: 1.4; }
   .slot.closed { background: repeating-linear-gradient(-45deg, var(--closed-bg), var(--closed-bg) 5px, var(--closed-b) 5px, var(--closed-b) 6px); border: 1px solid var(--closed-b); cursor: pointer; }
   .slot.closed:hover { filter: brightness(1.06); }
   .break-slot.closed { background: repeating-linear-gradient(-45deg, var(--closed-bg), var(--closed-bg) 5px, var(--closed-b) 5px, var(--closed-b) 6px); border-color: var(--closed-b); cursor: pointer; }
@@ -723,7 +731,7 @@ function ChangePasswordPanel({ adminPassword, onToast }) {
 
 // ─── Booking Modal ────────────────────────────────────────────────────────────
 
-function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave, onAdminSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, isLoans, isPrimary, isAdmin, weekBookings, periods = PERIODS }) {
+function SlotModal({ accentColor, day, period, booking, conflictBooking, conflictBooking2, conflictBooking2Name, onSave, onAdminSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, isLoans, isPrimary, isAdmin, weekBookings, periods = PERIODS }) {
   const isNew       = !booking?.teacher && booking?.status !== "closed";
   const isPending   = booking?.status === "pending";
   const isConfirmed = booking?.status === "confirmed";
@@ -904,10 +912,30 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
                 {isLoans
                   ? conflictBooking.status === "closed"
                     ? "The lab is closed for this period. You may still be able to borrow equipment. Check with admin before booking."
-                    : `${conflictBooking.teacher} has booked the lab during this period. Check that they are not using the equipment you need before booking.`
+                    : `${conflictBooking.teacher} (secondary) has booked the lab during this period. Check that they are not using the equipment you need before booking.`
                   : `${conflictBooking.teacher} has booked an equipment loan for this period. Check that they are not using the equipment you need before booking.`
                 }
               </span>
+            </div>
+          )}
+
+          {conflictBooking2 && (
+            <div className="conflict-warning">
+              <span className="conflict-warning-icon">⚠</span>
+              <span>
+                {isLoans
+                  ? `${conflictBooking2.teacher} (${conflictBooking2Name?.toLowerCase() || "primary"}) has booked the lab during this period. Check that they are not using the equipment you need before booking.`
+                  : `${conflictBooking2.teacher} has booked an equipment loan for this period. Check that they are not using the equipment you need before booking.`
+                }
+              </span>
+            </div>
+          )}
+
+          {isNew && isPrimary && (period.id === "pp8" || period.id === "pp10") && (
+            <div style={{ fontSize: "0.8rem", color: "#92400e", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "10px 14px", lineHeight: 1.5 }}>
+              <strong>NOTE:</strong> {period.id === "pp8"
+                ? "This slot is only 30 minutes and finishes at 3pm."
+                : "This slot is only 30 minutes and starts at 3:45pm."}
             </div>
           )}
 
@@ -1085,14 +1113,21 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, onSave,
 
 // ─── Timetable Grid ───────────────────────────────────────────────────────────
 
-function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, monday, dbKeyFn, lab, isLoans, isPrimary, onSaveState, isAdmin, onToast, periods = PERIODS }) {
+function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, crossBookingsPeriodMap, monday, dbKeyFn, lab, isLoans, isPrimary, crossTabBookings, periodMap, crossTabName, cross2Bookings, cross2BookingsPeriodMap, cross2Name, onSaveState, isAdmin, onToast, periods = PERIODS }) {
   const [modal, setModal]             = useState(null);
   const [selectMode, setSelectMode]   = useState(false);
   const [selectedSlots, setSelectedSlots] = useState(new Set());
   const wk = weekKey(monday);
 
-  const getBooking       = (day, pid) => bookings[wk]?.[slotKey(day, pid)] || null;
-  const getCrossBooking  = (day, pid) => crossBookings?.[wk]?.[slotKey(day, pid)] || null;
+  const getBooking      = (day, pid) => bookings[wk]?.[slotKey(day, pid)] || null;
+  const getCrossBooking = (day, pid) => {
+    const crossPid = crossBookingsPeriodMap ? (crossBookingsPeriodMap[pid] ?? null) : pid;
+    return crossPid ? crossBookings?.[wk]?.[slotKey(day, crossPid)] || null : null;
+  };
+  const getCross2Booking = (day, pid) => {
+    const crossPid = cross2BookingsPeriodMap ? (cross2BookingsPeriodMap[pid] ?? null) : pid;
+    return crossPid ? cross2Bookings?.[wk]?.[slotKey(day, crossPid)] || null : null;
+  };
 
   const persist = useCallback(async (wkk, data) => {
     onSaveState("saving");
@@ -1518,7 +1553,12 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                   const isClosed  = bk?.status === "closed";
                   const color     = isClosed ? "#64748b" : isPending ? "#86efac" : (bk?.color || accentColor);
                   const isSelected = selectMode && isAdmin && bk && selectedSlots.has(slotKey(day, period.id));
+                  const cross2     = getCross2Booking(day, period.id);
                   const isPrimaryUnavail = isPrimary && PRIMARY_UNAVAILABLE.has(period.id);
+                  const crossTabPeriodId = periodMap?.[period.id];
+                  const crossTabBk = !bk && crossTabPeriodId ? crossTabBookings?.[wk]?.[slotKey(day, crossTabPeriodId)] : null;
+                  const isCrossTabPending   = !!crossTabBk && crossTabBk.status === "pending";
+                  const isCrossTabConfirmed = !!crossTabBk && crossTabBk.status === "confirmed";
 
                   return (
                     <td key={day} className={`slot-cell${isMerged ? " has-merged" : ""}`} rowSpan={rowspan > 1 ? rowspan : undefined}>
@@ -1546,15 +1586,19 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                         </div>
                       ) : (
                         <div
-                          className={`slot${isPrimaryUnavail ? " primary-unavail" : bk ? (isClosed ? " closed" : isPending ? " pending" : " booked") : " available"}${isMerged ? " merged" : ""}${isSelected ? " selected" : ""}`}
-                          style={!isPrimaryUnavail && bk && !isPending && !isClosed ? { background: color + "22", borderColor: color } : {}}
+                          className={`slot${isPrimaryUnavail ? " primary-unavail" : isCrossTabConfirmed ? " cross-tab-blocked" : isCrossTabPending ? " pending" : bk ? (isClosed ? " closed" : isPending ? " pending" : " booked") : " available"}${isMerged ? " merged" : ""}${isSelected ? " selected" : ""}`}
+                          style={!isPrimaryUnavail && !isCrossTabConfirmed && !isCrossTabPending && bk && !isPending && !isClosed ? { background: color + "22", borderColor: color } : {}}
                           onClick={() => {
-                            if (isPrimaryUnavail) return;
+                            if (isPrimaryUnavail || isCrossTabConfirmed || isCrossTabPending) return;
                             if (selectMode && isAdmin && bk) { toggleSlotSelection(day, period.id); return; }
                             setModal({ day, period });
                           }}
                         >
-                          {isPrimaryUnavail ? null : bk ? (
+                          {isPrimaryUnavail ? null : isCrossTabConfirmed ? (
+                            <div className="cross-tab-label">{crossTabName}<br/>USING</div>
+                          ) : isCrossTabPending ? (
+                            <div className="pending-label">{crossTabName}<br/>BOOKING PENDING</div>
+                          ) : bk ? (
                             isClosed ? (
                               <>
                                 <div className="closed-label">🚫 CLOSED</div>
@@ -1593,10 +1637,12 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
                                 {cross && !isLoans && <span className="slot-conflict-icon">⚠</span>}
                                 {cross && isLoans && cross.status === "closed" && <span style={{ fontSize: "0.62rem", lineHeight: 1 }}>🚫</span>}
                                 {cross && isLoans && cross.status !== "closed" && <span className="slot-conflict-icon">⚠</span>}
+                                {!cross && cross2 && isLoans && <span className="slot-conflict-icon">⚠</span>}
                               </div>
                               <div className="conflict-avail-hint">
                                 <div className="slot-avail-text">available</div>
-                                {cross && isLoans && <div className="slot-avail-text">{cross.status === "closed" ? "lab closed" : "lab booked"}</div>}
+                                {cross && isLoans && <div className="slot-avail-text">{cross.status === "closed" ? "lab closed" : "secondary booking"}</div>}
+                                {!cross && cross2 && isLoans && <div className="slot-avail-text">primary booking</div>}
                               </div>
                             </>
                           )}
@@ -1631,6 +1677,8 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
           period={modal.period}
           booking={getBooking(modal.day, modal.period.id)}
           conflictBooking={getCrossBooking(modal.day, modal.period.id)}
+          conflictBooking2={getCross2Booking(modal.day, modal.period.id)}
+          conflictBooking2Name={cross2Name}
           onSave={handleSave}
           onAdminSave={handleAdminDirectSave}
           onClosure={handleClosure}
@@ -1831,13 +1879,15 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
         <TimetableGrid
           accentColor={labInfo.color} bookings={inLabBookings} setBookings={setInLab}
           crossBookings={loansBookings}
+          crossTabBookings={primaryBookings} periodMap={SECONDARY_TO_PRIMARY} crossTabName="PRIMARY"
           monday={monday} dbKeyFn={inLabKey} lab={lab} isLoans={false}
           onSaveState={setSaveState} isAdmin={isAdmin} onToast={showToast}
         />
       ) : tab === "primary" ? (
         <TimetableGrid
           accentColor={labInfo.color} bookings={primaryBookings} setBookings={setPrimary}
-          crossBookings={null}
+          crossBookings={loansBookings} crossBookingsPeriodMap={PRIMARY_TO_SECONDARY}
+          crossTabBookings={inLabBookings} periodMap={PRIMARY_TO_SECONDARY} crossTabName="SECONDARY"
           monday={monday} dbKeyFn={primaryKey} lab={lab} isLoans={false} isPrimary={true}
           onSaveState={setSaveState} isAdmin={isAdmin} onToast={showToast}
           periods={PRIMARY_PERIODS}
@@ -1846,6 +1896,7 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
         <TimetableGrid
           accentColor={labInfo.color} bookings={loansBookings} setBookings={setLoans}
           crossBookings={inLabBookings}
+          cross2Bookings={primaryBookings} cross2BookingsPeriodMap={SECONDARY_TO_PRIMARY} cross2Name="PRIMARY"
           monday={monday} dbKeyFn={loansKey} lab={lab} isLoans={true}
           onSaveState={setSaveState} isAdmin={isAdmin} onToast={showToast}
         />
