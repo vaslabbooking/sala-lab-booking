@@ -145,7 +145,12 @@ function addWeeks(monday, n) {
   d.setDate(d.getDate() + n * 7);
   return d;
 }
-function weekKey(monday) { return monday.toISOString().slice(0, 10); }
+function weekKey(monday) {
+  const y = monday.getFullYear();
+  const m = String(monday.getMonth() + 1).padStart(2, "0");
+  const d = String(monday.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 function slotKey(day, periodId) { return `${day}_${periodId}`; }
 const inLabKey = (lab, wk) => `bookings_${lab}_${wk}`;
 const loansKey = (lab, wk) => `loans_${lab}_${wk}`;
