@@ -1,19 +1,55 @@
 // netlify/functions/booking-action.js
-// Handles two things:
-//   POST ?action=request  → sends approval email to lab tech
-//   POST ?action=approve  → approves a pending booking
-//   POST ?action=reject   → rejects (deletes) a pending booking
+// Handles:
+//   POST ?action=approve        → approves a pending booking
+//   POST ?action=reject         → rejects (deletes) a pending booking
 //   POST ?action=change-password → updates admin password
 
-const { createClient } = require("@supabase/supabase-js");
+const TURSO_URL   = process.env.TURSO_URL;
+const TURSO_TOKEN = process.env.TURSO_TOKEN;
 
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY  // service key — has full access, server-side only
-);
+// ── Turso helpers ─────────────────────────────────────────────────────────────
+
+async function tursoExec(sql, args = []) {
+  const res = await fetch(`${TURSO_URL}/v2/pipeline`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${TURSO_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      requests: [
+        { type: "execute", stmt: { sql, args: args.map(v => ({ type: "text", value: String(v) })) } },
+        { type: "close" },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`Turso error: ${res.status}`);
+  const json = await res.json();
+  return json.results[0]?.response?.result;
+}
+
+async function dbLoad(key) {
+  const result = await tursoExec("SELECT data FROM bookings WHERE storage_key = ?", [key]);
+  const row = result?.rows?.[0];
+  if (!row) return null;
+  try { return JSON.parse(row[0]); } catch { return null; }
+}
+
+async function dbSave(key, data) {
+  await tursoExec(
+    "INSERT INTO bookings (storage_key, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(storage_key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+    [key, JSON.stringify(data), new Date().toISOString()]
+  );
+}
+
+async function dbDelete(key) {
+  await tursoExec("DELETE FROM bookings WHERE storage_key = ?", [key]);
+}
+
+// ── App helpers ───────────────────────────────────────────────────────────────
 
 const RESEND_KEY = process.env.RESEND_API_KEY;
-const SITE_URL   = process.env.URL || "http://localhost:8888"; // Netlify sets URL automatically
+const SITE_URL   = process.env.URL || "http://localhost:8888";
 
 const LAB_EMAILS = {
   dt: "linh.thi.pham@vas.edu.vn",
@@ -25,15 +61,9 @@ const LAB_NAMES = {
   av: "AV Lab",
 };
 
-// ── helpers ──────────────────────────────────────────────────────────────────
-
 async function getAdminPassword() {
-  const { data } = await supabase
-    .from("bookings")
-    .select("data")
-    .eq("storage_key", "admin_config")
-    .single();
-  return data?.data?.password || "admin1234";
+  const data = await dbLoad("admin_config");
+  return data?.password || "admin1234";
 }
 
 async function sendEmail({ to, subject, html }) {
@@ -84,33 +114,22 @@ exports.handler = async (event) => {
     if (currentPassword !== stored) {
       return { statusCode: 403, headers, body: JSON.stringify({ error: "Current password incorrect" }) };
     }
-    await supabase.from("bookings").upsert(
-      { storage_key: "admin_config", data: { password: newPassword }, updated_at: new Date().toISOString() },
-      { onConflict: "storage_key" }
-    );
+    await dbSave("admin_config", { password: newPassword });
     return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) };
   }
 
   // ── Request approval (submit booking) ─────────────────────────────────────
   if (action === "request") {
     const { lab, weekKey, slotKey, booking, bookingType } = body;
-    // bookingType = "inlab" | "loans"
 
-    // Generate a unique token for this approval
     const token = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
-    // Save pending token to DB
     const pendingKey = `pending_${lab}_${weekKey}_${slotKey}_${bookingType}`;
-    await supabase.from("bookings").upsert(
-      { storage_key: pendingKey, data: { token, lab, weekKey, slotKey, booking, bookingType }, updated_at: new Date().toISOString() },
-      { onConflict: "storage_key" }
-    );
+    await dbSave(pendingKey, { token, lab, weekKey, slotKey, booking, bookingType });
 
-    const period = booking.periodLabel || slotKey;
     const approveUrl = `${SITE_URL}/?approve=${token}&key=${encodeURIComponent(pendingKey)}`;
     const rejectUrl  = `${SITE_URL}/?reject=${token}&key=${encodeURIComponent(pendingKey)}`;
 
-    const labName = LAB_NAMES[lab] || lab;
+    const labName   = LAB_NAMES[lab] || lab;
     const typeLabel = bookingType === "loans" ? "Equipment Loan" : "In-Lab Booking";
 
     await sendEmail({
@@ -156,26 +175,17 @@ exports.handler = async (event) => {
       return { statusCode: 403, headers, body: JSON.stringify({ error: "Invalid admin password" }) };
     }
 
-    // Load pending record
-    const { data: pendingData } = await supabase
-      .from("bookings")
-      .select("data")
-      .eq("storage_key", pendingKey)
-      .single();
-
-    if (!pendingData?.data || pendingData.data.token !== token) {
+    const pendingData = await dbLoad(pendingKey);
+    if (!pendingData || pendingData.token !== token) {
       return { statusCode: 404, headers, body: JSON.stringify({ error: "Booking not found or already actioned" }) };
     }
 
-    const { lab, weekKey, slotKey, booking, bookingType, doubleSlotKey } = pendingData.data;
-    const storageKey = bookingType === "loans"
-      ? `loans_${lab}_${weekKey}`
-      : `bookings_${lab}_${weekKey}`;
-
+    const { lab, weekKey, slotKey, booking, bookingType, doubleSlotKey } = pendingData;
     const slotKeys = [slotKey];
     if (doubleSlotKey) slotKeys.push(doubleSlotKey);
 
-    // Handle recurring
+    const storageKeyFn = (wkk) => bookingType === "loans" ? `loans_${lab}_${wkk}` : `bookings_${lab}_${wkk}`;
+
     if (booking.recurring && booking.recurWeeks > 1) {
       const monday = new Date(weekKey);
       const recurId = `recur_${Date.now()}_${slotKey}`;
@@ -183,9 +193,7 @@ exports.handler = async (event) => {
         const wkDate = new Date(monday);
         wkDate.setDate(wkDate.getDate() + i * 7);
         const wkk = wkDate.toISOString().slice(0, 10);
-        const wkStorageKey = bookingType === "loans" ? `loans_${lab}_${wkk}` : `bookings_${lab}_${wkk}`;
-        const { data: wkData } = await supabase.from("bookings").select("data").eq("storage_key", wkStorageKey).single();
-        const wkSlots = wkData?.data || {};
+        const wkSlots = (await dbLoad(storageKeyFn(wkk))) || {};
         for (const sk of slotKeys) {
           const slotBk = wkSlots[sk];
           if (slotBk) {
@@ -193,34 +201,24 @@ exports.handler = async (event) => {
             wkSlots[sk] = { ...rest, recurId, status: "confirmed" };
           }
         }
-        await supabase.from("bookings").upsert(
-          { storage_key: wkStorageKey, data: wkSlots, updated_at: new Date().toISOString() },
-          { onConflict: "storage_key" }
-        );
+        await dbSave(storageKeyFn(wkk), wkSlots);
       }
     } else {
-      const { data: weekData } = await supabase.from("bookings").select("data").eq("storage_key", storageKey).single();
-      const slots = weekData?.data || {};
+      const slots = (await dbLoad(storageKeyFn(weekKey))) || {};
       for (const sk of slotKeys) {
         const slotBk = slots[sk];
         if (slotBk) {
           const { recurring, recurWeeks, status: _s, pendingKey: _pk, ...rest } = slotBk;
           slots[sk] = { ...rest, status: "confirmed" };
         } else if (sk === slotKey) {
-          // Fallback for first slot if not found in DB
           const { recurring, recurWeeks, status: _s, pendingKey: _pk, ...rest } = booking;
           slots[sk] = { ...rest, status: "confirmed" };
         }
       }
-      await supabase.from("bookings").upsert(
-        { storage_key: storageKey, data: slots, updated_at: new Date().toISOString() },
-        { onConflict: "storage_key" }
-      );
+      await dbSave(storageKeyFn(weekKey), slots);
     }
 
-    // Remove pending record
-    await supabase.from("bookings").delete().eq("storage_key", pendingKey);
-
+    await dbDelete(pendingKey);
     return { statusCode: 200, headers, body: JSON.stringify({ ok: true, message: "Booking approved" }) };
   }
 
@@ -233,52 +231,34 @@ exports.handler = async (event) => {
       return { statusCode: 403, headers, body: JSON.stringify({ error: "Invalid admin password" }) };
     }
 
-    const { data: pendingData } = await supabase
-      .from("bookings")
-      .select("data")
-      .eq("storage_key", pendingKey)
-      .single();
-
-    if (!pendingData?.data || pendingData.data.token !== token) {
+    const pendingData = await dbLoad(pendingKey);
+    if (!pendingData || pendingData.token !== token) {
       return { statusCode: 404, headers, body: JSON.stringify({ error: "Booking not found or already actioned" }) };
     }
 
-    // Remove the pending slot(s) from the week data
-    const { lab, weekKey, slotKey, booking, bookingType, doubleSlotKey } = pendingData.data;
-    const storageKey = bookingType === "loans" ? `loans_${lab}_${weekKey}` : `bookings_${lab}_${weekKey}`;
-
+    const { lab, weekKey, slotKey, booking, bookingType, doubleSlotKey } = pendingData;
     const slotKeys = [slotKey];
     if (doubleSlotKey) slotKeys.push(doubleSlotKey);
 
+    const storageKeyFn = (wkk) => bookingType === "loans" ? `loans_${lab}_${wkk}` : `bookings_${lab}_${wkk}`;
+
     if (booking?.recurring && booking?.recurWeeks > 1) {
-      // Delete all recurring weeks
       const monday = new Date(weekKey);
       for (let i = 0; i < booking.recurWeeks; i++) {
         const wkDate = new Date(monday);
         wkDate.setDate(wkDate.getDate() + i * 7);
         const wkk = wkDate.toISOString().slice(0, 10);
-        const wkStorageKey = bookingType === "loans" ? `loans_${lab}_${wkk}` : `bookings_${lab}_${wkk}`;
-        const { data: wkData } = await supabase.from("bookings").select("data").eq("storage_key", wkStorageKey).single();
-        const wkSlots = wkData?.data || {};
+        const wkSlots = (await dbLoad(storageKeyFn(wkk))) || {};
         for (const sk of slotKeys) delete wkSlots[sk];
-        await supabase.from("bookings").upsert(
-          { storage_key: wkStorageKey, data: wkSlots, updated_at: new Date().toISOString() },
-          { onConflict: "storage_key" }
-        );
+        await dbSave(storageKeyFn(wkk), wkSlots);
       }
     } else {
-      const { data: weekData } = await supabase.from("bookings").select("data").eq("storage_key", storageKey).single();
-      const slots = weekData?.data || {};
+      const slots = (await dbLoad(storageKeyFn(weekKey))) || {};
       for (const sk of slotKeys) delete slots[sk];
-      await supabase.from("bookings").upsert(
-        { storage_key: storageKey, data: slots, updated_at: new Date().toISOString() },
-        { onConflict: "storage_key" }
-      );
+      await dbSave(storageKeyFn(weekKey), slots);
     }
 
-    // Remove pending record
-    await supabase.from("bookings").delete().eq("storage_key", pendingKey);
-
+    await dbDelete(pendingKey);
     return { statusCode: 200, headers, body: JSON.stringify({ ok: true, message: "Booking rejected" }) };
   }
 

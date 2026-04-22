@@ -1,20 +1,40 @@
 import { useState, useEffect, useCallback } from "react";
-import { createClient } from "@supabase/supabase-js";
 
-// ─── Supabase ─────────────────────────────────────────────────────────────────
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY;
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// ─── Turso ────────────────────────────────────────────────────────────────────
+const TURSO_URL   = import.meta.env.VITE_TURSO_URL;
+const TURSO_TOKEN = import.meta.env.VITE_TURSO_TOKEN;
+
+async function tursoExec(sql, args = []) {
+  const res = await fetch(`${TURSO_URL}/v2/pipeline`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${TURSO_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      requests: [
+        { type: "execute", stmt: { sql, args: args.map(v => ({ type: "text", value: String(v) })) } },
+        { type: "close" },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`Turso error: ${res.status}`);
+  const json = await res.json();
+  return json.results[0]?.response?.result;
+}
 
 async function dbLoad(key) {
-  const { data } = await supabase.from("bookings").select("data").eq("storage_key", key).single();
-  return data?.data || {};
+  const result = await tursoExec("SELECT data FROM bookings WHERE storage_key = ?", [key]);
+  const row = result?.rows?.[0];
+  if (!row) return {};
+  try { return JSON.parse(row[0]); } catch { return {}; }
 }
 
 async function dbSave(key, data) {
-  const { error } = await supabase.from("bookings")
-    .upsert({ storage_key: key, data, updated_at: new Date().toISOString() }, { onConflict: "storage_key" });
-  if (error) console.error("Save error:", error);
+  await tursoExec(
+    "INSERT INTO bookings (storage_key, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(storage_key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+    [key, JSON.stringify(data), new Date().toISOString()]
+  );
 }
 
 // ─── Netlify function (used only for approve/reject/change-password) ──────────
