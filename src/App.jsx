@@ -1102,8 +1102,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
       for (let i = 0; i < recurWeeks; i++) {
         const wkDate = addWeeks(getMondayOfWeek(new Date(wk)), i);
         const wkk = weekKey(wkDate);
-        const { data: wkData } = await supabase.from("bookings").select("data").eq("storage_key", dbKeyFn(lab, wkk)).single();
-        const wkSlots = { ...(wkData?.data || {}) };
+        const wkSlots = { ...(await dbLoad(dbKeyFn(lab, wkk))) };
         wkSlots[key] = { ...confirmed, recurId };
         if (confirmed2) wkSlots[key2] = { ...confirmed2, recurId };
         nextAll[wkk] = wkSlots;
@@ -1177,8 +1176,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
       for (let i = 0; i < recurWeeks; i++) {
         const wkDate = addWeeks(getMondayOfWeek(new Date(wk)), i);
         const wkk = weekKey(wkDate);
-        const { data: wkData } = await supabase.from("bookings").select("data").eq("storage_key", dbKeyFn(lab, wkk)).single();
-        const wkSlots = { ...(wkData?.data || {}) };
+        const wkSlots = { ...(await dbLoad(dbKeyFn(lab, wkk))) };
         wkSlots[key] = pendingBooking;
         if (pendingBooking2) wkSlots[key2] = pendingBooking2;
         nextAll[wkk] = wkSlots;
@@ -1248,8 +1246,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
       for (let i = 0; i < bk.recurWeeks; i++) {
         const wkDate = addWeeks(getMondayOfWeek(new Date(wk)), i);
         const wkk = weekKey(wkDate);
-        const { data: wkData } = await supabase.from("bookings").select("data").eq("storage_key", dbKeyFn(lab, wkk)).single();
-        const wkSlots = { ...(wkData?.data || {}) };
+        const wkSlots = { ...(await dbLoad(dbKeyFn(lab, wkk))) };
         for (const k of keysToApprove) {
           const slotBk = wkSlots[k];
           if (slotBk) {
@@ -1292,8 +1289,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
       for (let i = 0; i < bk.recurWeeks; i++) {
         const wkDate = addWeeks(getMondayOfWeek(new Date(wk)), i);
         const wkk = weekKey(wkDate);
-        const { data: wkData } = await supabase.from("bookings").select("data").eq("storage_key", dbKeyFn(lab, wkk)).single();
-        const wkSlots = { ...(wkData?.data || {}) };
+        const wkSlots = { ...(await dbLoad(dbKeyFn(lab, wkk))) };
         for (const k of keysToDelete) delete wkSlots[k];
         nextAll[wkk] = wkSlots;
         await persist(wkk, wkSlots);
@@ -1336,8 +1332,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
         for (let i = 0; i < bk.recurWeeks; i++) {
           const wkDate = addWeeks(getMondayOfWeek(new Date(wk)), i);
           const wkk = weekKey(wkDate);
-          const { data: wkData } = await supabase.from("bookings").select("data").eq("storage_key", dbKeyFn(lab, wkk)).single();
-          const wkSlots = { ...(wkData?.data || {}) };
+          const wkSlots = { ...(await dbLoad(dbKeyFn(lab, wkk))) };
           for (const k of keysToDelete) delete wkSlots[k];
           nextAll[wkk] = wkSlots;
           await persist(wkk, wkSlots);
@@ -1402,8 +1397,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, mond
         for (let i = 0; i < bk.recurWeeks; i++) {
           const wkDate = addWeeks(getMondayOfWeek(new Date(wk)), i);
           const wkk = weekKey(wkDate);
-          const { data: wkData } = await supabase.from("bookings").select("data").eq("storage_key", dbKeyFn(lab, wkk)).single();
-          const wkSlots = { ...(wkData?.data || {}) };
+          const wkSlots = { ...(await dbLoad(dbKeyFn(lab, wkk))) };
           for (const k of keysToApprove) {
             const slotBk = wkSlots[k];
             if (slotBk) {
