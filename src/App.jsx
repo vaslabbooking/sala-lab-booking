@@ -746,7 +746,7 @@ function ChangePasswordPanel({ adminPassword, onToast }) {
 
 // ─── Booking Modal ────────────────────────────────────────────────────────────
 
-function SlotModal({ accentColor, day, period, booking, conflictBooking, conflictBooking2, conflictBooking2Name, onSave, onAdminSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, onAdminMove, isLoans, isPrimary, isAdmin, weekBookings, allBookings, monday, allCrossTabBookings, crossTabPeriodMapForMove, allCross2Bookings, cross2PeriodMapForMove, periods = PERIODS }) {
+function SlotModal({ accentColor, day, period, booking, conflictBooking, conflictBooking2, conflictBooking2Name, onSave, onAdminSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, onAdminMove, onCheckRecurConflicts, isLoans, isPrimary, isAdmin, weekBookings, allBookings, monday, allCrossTabBookings, crossTabPeriodMapForMove, allCross2Bookings, cross2PeriodMapForMove, periods = PERIODS }) {
   const isNew       = !booking?.teacher && booking?.status !== "closed";
   const isPending   = booking?.status === "pending";
   const isConfirmed = booking?.status === "confirmed";
@@ -769,11 +769,13 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
   const [closureThrough, setClosureThrough] = useState("");
 
   // ── Move mode state ──────────────────────────────────────────────────────────
-  const [moveMode, setMoveMode]           = useState(false);
+  const [moveMode, setMoveMode]             = useState(false);
   const [moveWeekOffset, setMoveWeekOffset] = useState(0);
-  const [moveDay, setMoveDay]             = useState(day);
-  const [movePeriodId, setMovePeriodId]   = useState("");
-  const [moveRecurOption, setMoveRecurOption] = useState("this");
+  const [moveDay, setMoveDay]               = useState(day);
+  const [movePeriodId, setMovePeriodId]     = useState("");
+  const [moveRecurOption, setMoveRecurOption]   = useState("this");
+  const [moveConflictCount, setMoveConflictCount] = useState(null); // null=unchecked, 0=clear, N=blocked
+  const [moveConflictApprove, setMoveConflictApprove] = useState(false); // saved approve flag for retry
 
   const targetMoveMonday = monday && moveWeekOffset === 1 ? addWeeks(monday, 1) : monday;
   const targetMoveWk = targetMoveMonday ? weekKey(targetMoveMonday) : null;
@@ -815,9 +817,23 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
       return true;
     });
 
-  const doMove = (approve) => {
+  const doMove = async (approve) => {
     if (!movePeriodId || !onAdminMove) return;
+    // For "move all" on a recurring booking, pre-check for conflicts in other weeks
+    if (moveRecurOption === "all" && isRecurring && onCheckRecurConflicts) {
+      const conflictCount = await onCheckRecurConflicts({ targetDay: moveDay, targetPeriodId: movePeriodId, targetWeekOffset: moveWeekOffset });
+      if (conflictCount > 0) {
+        setMoveConflictCount(conflictCount);
+        setMoveConflictApprove(approve);
+        return; // show warning — don't move yet
+      }
+    }
     onAdminMove({ targetDay: moveDay, targetPeriodId: movePeriodId, targetWeekOffset: moveWeekOffset, recurMode: moveRecurOption, approve });
+  };
+
+  const confirmMoveThisOnly = () => {
+    setMoveConflictCount(null);
+    onAdminMove({ targetDay: moveDay, targetPeriodId: movePeriodId, targetWeekOffset: moveWeekOffset, recurMode: "this", approve: moveConflictApprove });
   };
 
   const movePanelContent = (
@@ -845,7 +861,7 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
           {movablePeriods.map(p => <option key={p.id} value={p.id}>{p.label} ({p.time})</option>)}
         </select>
       </div>
-      {isRecurring && movePeriodId && (
+      {isRecurring && movePeriodId && moveConflictCount === null && (
         <div className="move-recur-opts">
           <label className="move-recur-opt">
             <input type="radio" name="moveRecur" checked={moveRecurOption === "this"} onChange={() => setMoveRecurOption("this")} />
@@ -855,6 +871,23 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
             <input type="radio" name="moveRecur" checked={moveRecurOption === "all"} onChange={() => setMoveRecurOption("all")} />
             Move all in series
           </label>
+        </div>
+      )}
+      {moveConflictCount > 0 && (
+        <div className="conflict-warning">
+          <span className="conflict-warning-icon">⚠</span>
+          <span>
+            {moveConflictCount} week{moveConflictCount > 1 ? "s" : ""} in this series already have a booking in that slot and cannot be moved.
+            Do you want to move just this week instead?
+          </span>
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button className="btn-move" style={{ fontSize: "0.8rem", padding: "7px 14px" }} onClick={confirmMoveThisOnly}>
+              Move just this week
+            </button>
+            <button className="btn-cancel" style={{ fontSize: "0.8rem" }} onClick={() => setMoveConflictCount(null)}>
+              Cancel
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -992,10 +1025,12 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
           <div className="modal-footer">
             {moveMode ? (
               <>
-                <button className="btn-cancel" onClick={() => setMoveMode(false)}>← Back</button>
-                <button className="btn-move" disabled={!movePeriodId} onClick={() => doMove(true)}>
-                  Approve &amp; Move
-                </button>
+                <button className="btn-cancel" onClick={() => { setMoveMode(false); setMoveConflictCount(null); }}>← Back</button>
+                {moveConflictCount === null && (
+                  <button className="btn-move" disabled={!movePeriodId} onClick={() => doMove(true)}>
+                    Approve &amp; Move
+                  </button>
+                )}
               </>
             ) : (
               <button className="btn-cancel" onClick={onClose}>Close</button>
@@ -1198,10 +1233,12 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
         <div className="modal-footer">
           {!isNew && isAdmin && moveMode ? (
             <>
-              <button className="btn-cancel" onClick={() => setMoveMode(false)}>← Back</button>
-              <button className="btn-move" disabled={!movePeriodId} onClick={() => doMove(false)}>
-                Confirm Move
-              </button>
+              <button className="btn-cancel" onClick={() => { setMoveMode(false); setMoveConflictCount(null); }}>← Back</button>
+              {moveConflictCount === null && (
+                <button className="btn-move" disabled={!movePeriodId} onClick={() => doMove(false)}>
+                  Confirm Move
+                </button>
+              )}
             </>
           ) : (<>
           {!isNew && isAdmin && !delMode && (
@@ -1548,6 +1585,37 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
     onToast("Booking removed");
   };
 
+  // Admin: pre-check how many recurring weeks would be blocked by moving to target
+  const handleCheckRecurConflicts = async ({ targetDay, targetPeriodId, targetWeekOffset }) => {
+    const { day, period } = modal;
+    const srcKey = slotKey(day, period.id);
+    const bk = getBooking(day, period.id);
+    if (!bk?.recurId) return 0;
+    const targetMondayDate = addWeeks(monday, targetWeekOffset);
+    const targetKey = slotKey(targetDay, targetPeriodId);
+    const isDoubleFirst = !bk.isDoubleSecond && !!bk.doubleId;
+    const targetNextPeriod = isDoubleFirst ? getNextLessonPeriod(targetPeriodId, periods) : null;
+    const targetDoubleKey = targetNextPeriod ? slotKey(targetDay, targetNextPeriod.id) : null;
+    const weeksToCheck = new Set(Object.keys(bookings));
+    for (let offset = -3; offset <= 3; offset++) {
+      weeksToCheck.add(weekKey(addWeeks(monday, offset)));
+    }
+    let conflictCount = 0;
+    for (const wkk of weeksToCheck) {
+      const slots = bookings[wkk] || (await dbLoad(dbKeyFn(lab, wkk)));
+      if (!slots) continue;
+      const slotBk = slots[srcKey];
+      if (!slotBk || slotBk.recurId !== bk.recurId) continue;
+      const targetOccupant = slots[targetKey];
+      const targetOccupant2 = targetDoubleKey ? slots[targetDoubleKey] : null;
+      if (
+        (targetOccupant && targetOccupant.recurId !== bk.recurId) ||
+        (targetOccupant2 && targetOccupant2.recurId !== bk.recurId)
+      ) conflictCount++;
+    }
+    return conflictCount;
+  };
+
   // Admin: move a booking to a different slot/week
   const handleAdminMove = async ({ targetDay, targetPeriodId, targetWeekOffset, recurMode, approve }) => {
     const { day, period } = modal;
@@ -1589,19 +1657,18 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
       for (let offset = -3; offset <= 3; offset++) {
         weeksToCheck.add(weekKey(addWeeks(monday, offset)));
       }
-      const skippedWeeks = [];
       for (const wkk of weeksToCheck) {
         const slots = nextAll[wkk] || (await dbLoad(dbKeyFn(lab, wkk)));
         if (!slots) continue;
         const slotBk = slots[srcKey];
         if (!slotBk || slotBk.recurId !== bk.recurId) continue;
-        // Check target slot is free (allow if occupied by the same recurring series)
+        // Safety: skip if target is taken by something outside this series (pre-check should have caught this)
         const targetOccupant = slots[targetKey];
         const targetOccupant2 = targetDoubleKey ? slots[targetDoubleKey] : null;
         const targetBlocked =
           (targetOccupant && targetOccupant.recurId !== bk.recurId) ||
           (targetOccupant2 && targetOccupant2.recurId !== bk.recurId);
-        if (targetBlocked) { skippedWeeks.push(wkk); continue; }
+        if (targetBlocked) continue;
         const slotPartner = srcDoubleKey ? slots[srcDoubleKey] : null;
         const updated = { ...slots };
         delete updated[srcKey];
@@ -1612,9 +1679,6 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
         }
         nextAll[wkk] = updated;
         await persist(wkk, updated);
-      }
-      if (skippedWeeks.length > 0) {
-        onToast(`⚠ ${skippedWeeks.length} week${skippedWeeks.length > 1 ? "s" : ""} skipped — target slot already booked`);
       }
     } else {
       const srcSlots = { ...(nextAll[wk] || {}) };
@@ -1906,6 +1970,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
           conflictBooking2={getCross2Booking(modal.day, modal.period.id)}
           conflictBooking2Name={cross2Name}
           onAdminMove={handleAdminMove}
+          onCheckRecurConflicts={handleCheckRecurConflicts}
           allBookings={bookings}
           monday={monday}
           allCrossTabBookings={crossTabBookings}
