@@ -463,6 +463,21 @@ const css = `
   .btn-approve:hover { filter: brightness(1.15); }
   .btn-reject-action { background: none; border: 1px solid #fca5a5; color: #e74c3c; padding: 9px 20px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; }
   .btn-reject-action:hover { background: var(--del-hover); }
+  .btn-move { background: #6366f1; color: #fff; border: none; padding: 9px 20px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: filter 0.15s; }
+  .btn-move:hover:not(:disabled) { filter: brightness(1.15); }
+  .btn-move:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-move-toggle { background: none; border: 1px solid #6366f1; color: #6366f1; padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 0.82rem; transition: all 0.15s; }
+  .btn-move-toggle:hover { background: rgba(99,102,241,0.08); }
+  .move-panel { background: var(--bg3); border: 1px solid var(--border2); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .move-panel-title { font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--text4); text-transform: uppercase; letter-spacing: 0.06em; }
+  .move-week-tabs { display: flex; gap: 6px; }
+  .move-week-tab { flex: 1; padding: 7px 10px; border: 1px solid var(--border2); border-radius: 6px; background: none; color: var(--text3); cursor: pointer; font-size: 0.82rem; transition: all 0.15s; text-align: center; }
+  .move-week-tab.active { border-color: #6366f1; color: #6366f1; }
+  .move-selects { display: flex; gap: 8px; }
+  .move-select { flex: 1; background: var(--bg4); border: 1px solid var(--border2); color: var(--text); border-radius: 8px; padding: 8px 10px; font-family: 'DM Sans', sans-serif; font-size: 0.85rem; outline: none; transition: border-color 0.15s; }
+  .move-select:focus { border-color: #6366f1; }
+  .move-recur-opts { display: flex; flex-direction: column; gap: 8px; }
+  .move-recur-opt { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text3); cursor: pointer; user-select: none; }
 
   /* Conflict warning */
   .conflict-warning { background: rgba(249,115,22,0.08); border: 1px solid rgba(249,115,22,0.3); border-radius: 8px; padding: 10px 14px; font-size: 0.8rem; color: #c2410c; line-height: 1.5; display: flex; gap: 10px; align-items: flex-start; }
@@ -731,13 +746,14 @@ function ChangePasswordPanel({ adminPassword, onToast }) {
 
 // ─── Booking Modal ────────────────────────────────────────────────────────────
 
-function SlotModal({ accentColor, day, period, booking, conflictBooking, conflictBooking2, conflictBooking2Name, onSave, onAdminSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, isLoans, isPrimary, isAdmin, weekBookings, periods = PERIODS }) {
+function SlotModal({ accentColor, day, period, booking, conflictBooking, conflictBooking2, conflictBooking2Name, onSave, onAdminSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, onAdminMove, isLoans, isPrimary, isAdmin, weekBookings, allBookings, monday, periods = PERIODS }) {
   const isNew       = !booking?.teacher && booking?.status !== "closed";
   const isPending   = booking?.status === "pending";
   const isConfirmed = booking?.status === "confirmed";
   const isClosed    = booking?.status === "closed";
   const isRecurring = !!booking?.recurId;
   const isDoubleSecond = !!booking?.isDoubleSecond;
+  const isDoubleFirst  = !isDoubleSecond && !!booking?.doubleId;
 
   const [form, setForm] = useState({
     teacher: "", class: "", subject: "",
@@ -751,6 +767,82 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
   const [closureMode, setClosureMode] = useState(false);
   const [closureReason, setClosureReason]   = useState("");
   const [closureThrough, setClosureThrough] = useState("");
+
+  // ── Move mode state ──────────────────────────────────────────────────────────
+  const [moveMode, setMoveMode]           = useState(false);
+  const [moveWeekOffset, setMoveWeekOffset] = useState(0);
+  const [moveDay, setMoveDay]             = useState(day);
+  const [movePeriodId, setMovePeriodId]   = useState("");
+  const [moveRecurOption, setMoveRecurOption] = useState("this");
+
+  const targetMoveMonday = monday && moveWeekOffset === 1 ? addWeeks(monday, 1) : monday;
+  const targetMoveWk = targetMoveMonday ? weekKey(targetMoveMonday) : null;
+  const targetMoveBks = (targetMoveWk && allBookings?.[targetMoveWk]) || {};
+  const moveSrcKey  = slotKey(day, period.id);
+  const moveSrcKey2 = booking?.doublePartnerKey || null;
+
+  const movablePeriods = periods
+    .filter(p => p.type === "lesson")
+    .filter(p => {
+      const k = slotKey(moveDay, p.id);
+      const existing = targetMoveBks[k];
+      const isSrc = moveWeekOffset === 0 && (k === moveSrcKey || k === moveSrcKey2);
+      if (existing && !isSrc) return false;
+      if (isDoubleFirst) {
+        const nxt = getNextLessonPeriod(p.id, periods);
+        if (!nxt) return false;
+        const nxtK = slotKey(moveDay, nxt.id);
+        const nxtExisting = targetMoveBks[nxtK];
+        const nxtIsSrc = moveWeekOffset === 0 && (nxtK === moveSrcKey || nxtK === moveSrcKey2);
+        if (nxtExisting && !nxtIsSrc) return false;
+      }
+      return true;
+    });
+
+  const doMove = (approve) => {
+    if (!movePeriodId || !onAdminMove) return;
+    onAdminMove({ targetDay: moveDay, targetPeriodId: movePeriodId, targetWeekOffset: moveWeekOffset, recurMode: moveRecurOption, approve });
+  };
+
+  const movePanelContent = (
+    <div className="move-panel">
+      <div className="move-panel-title">📦 Move booking to…</div>
+      {isDoubleFirst && (
+        <div style={{ fontSize: "0.78rem", color: "var(--text5)", fontFamily: "DM Mono, monospace" }}>
+          Double period — both slots will move together
+        </div>
+      )}
+      <div className="move-week-tabs">
+        <button className={`move-week-tab${moveWeekOffset === 0 ? " active" : ""}`}
+          onClick={() => { setMoveWeekOffset(0); setMovePeriodId(""); }}>This week</button>
+        <button className={`move-week-tab${moveWeekOffset === 1 ? " active" : ""}`}
+          onClick={() => { setMoveWeekOffset(1); setMovePeriodId(""); }}>Next week</button>
+      </div>
+      <div className="move-selects">
+        <select className="move-select" value={moveDay}
+          onChange={e => { setMoveDay(e.target.value); setMovePeriodId(""); }}>
+          {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select className="move-select" value={movePeriodId}
+          onChange={e => setMovePeriodId(e.target.value)}>
+          <option value="">— Select period —</option>
+          {movablePeriods.map(p => <option key={p.id} value={p.id}>{p.label} ({p.time})</option>)}
+        </select>
+      </div>
+      {isRecurring && movePeriodId && (
+        <div className="move-recur-opts">
+          <label className="move-recur-opt">
+            <input type="radio" name="moveRecur" checked={moveRecurOption === "this"} onChange={() => setMoveRecurOption("this")} />
+            Move just this occurrence
+          </label>
+          <label className="move-recur-opt">
+            <input type="radio" name="moveRecur" checked={moveRecurOption === "all"} onChange={() => setMoveRecurOption("all")} />
+            Move all in series
+          </label>
+        </div>
+      )}
+    </div>
+  );
 
   const nextPeriod        = isNew ? getNextLessonPeriod(period.id, periods) : null;
   const nextKey           = nextPeriod ? slotKey(day, nextPeriod.id) : null;
@@ -857,27 +949,41 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
             <button className="modal-close" onClick={onClose}>×</button>
           </div>
           <div className="modal-body">
-            <div className="pending-status-badge">⏳ Awaiting approval</div>
-            <div className="pending-info-box">
-              {[["Teacher", booking.teacher], ["Class", booking.class], ["Subject", booking.subject],
-                booking.activityOverview && ["Activity", booking.activityOverview],
-                booking.requiredEquipment && ["Equipment", booking.requiredEquipment],
-                booking.numStudents && ["Students", `${booking.numStudents}${booking.numGroups ? ` (${booking.numGroups} groups)` : ""}`],
-                booking.recurring && ["Recurring", `${booking.recurWeeks} weeks`],
-              ].filter(Boolean).map(([label, value]) => (
-                <div key={label} className="pending-info-row">
-                  <span className="pending-info-label">{label}</span>
-                  <span className="pending-info-value">{value}</span>
+            {moveMode ? movePanelContent : (
+              <>
+                <div className="pending-status-badge">⏳ Awaiting approval</div>
+                <div className="pending-info-box">
+                  {[["Teacher", booking.teacher], ["Class", booking.class], ["Subject", booking.subject],
+                    booking.activityOverview && ["Activity", booking.activityOverview],
+                    booking.requiredEquipment && ["Equipment", booking.requiredEquipment],
+                    booking.numStudents && ["Students", `${booking.numStudents}${booking.numGroups ? ` (${booking.numGroups} groups)` : ""}`],
+                    booking.recurring && ["Recurring", `${booking.recurWeeks} weeks`],
+                  ].filter(Boolean).map(([label, value]) => (
+                    <div key={label} className="pending-info-row">
+                      <span className="pending-info-label">{label}</span>
+                      <span className="pending-info-value">{value}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div className="admin-actions">
-              <button className="btn-approve" onClick={onAdminApprove}>✓ Approve Booking</button>
-              <button className="btn-reject-action" onClick={onAdminReject}>✕ Reject</button>
-            </div>
+                <div className="admin-actions">
+                  <button className="btn-approve" onClick={onAdminApprove}>✓ Approve Booking</button>
+                  <button className="btn-reject-action" onClick={onAdminReject}>✕ Reject</button>
+                  <button className="btn-move-toggle" onClick={() => setMoveMode(true)}>📦 Approve & Move…</button>
+                </div>
+              </>
+            )}
           </div>
           <div className="modal-footer">
-            <button className="btn-cancel" onClick={onClose}>Close</button>
+            {moveMode ? (
+              <>
+                <button className="btn-cancel" onClick={() => setMoveMode(false)}>← Back</button>
+                <button className="btn-move" disabled={!movePeriodId} onClick={() => doMove(true)}>
+                  Approve &amp; Move
+                </button>
+              </>
+            ) : (
+              <button className="btn-cancel" onClick={onClose}>Close</button>
+            )}
           </div>
         </div>
       </div>
@@ -905,6 +1011,7 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
         </div>
 
         <div className="modal-body">
+          {!isNew && isAdmin && moveMode ? movePanelContent : (<>
           {conflictBooking && (
             <div className="conflict-warning">
               <span className="conflict-warning-icon">⚠</span>
@@ -1069,13 +1176,25 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
           </div>
             </>
           )}
+          </>)}
         </div>
 
         <div className="modal-footer">
+          {!isNew && isAdmin && moveMode ? (
+            <>
+              <button className="btn-cancel" onClick={() => setMoveMode(false)}>← Back</button>
+              <button className="btn-move" disabled={!movePeriodId} onClick={() => doMove(false)}>
+                Confirm Move
+              </button>
+            </>
+          ) : (<>
           {!isNew && isAdmin && !delMode && (
             <button className="btn-delete" onClick={() => setDelMode(true)}>
               {isRecurring ? "Remove…" : "Remove Booking"}
             </button>
+          )}
+          {!isNew && isAdmin && !delMode && !closureMode && (
+            <button className="btn-move-toggle" onClick={() => { setMoveMode(true); setDelMode(false); }}>📦 Move…</button>
           )}
           {!isNew && isAdmin && delMode && (
             <div className="recur-del-wrap">
@@ -1105,6 +1224,7 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
               Close {closureThrough === "wholeday" ? "Whole Day" : closureThrough ? "Slots" : "Slot"}
             </button>
           )}
+          </>)}
         </div>
       </div>
     </div>
@@ -1412,6 +1532,78 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
     onToast("Booking removed");
   };
 
+  // Admin: move a booking to a different slot/week
+  const handleAdminMove = async ({ targetDay, targetPeriodId, targetWeekOffset, recurMode, approve }) => {
+    const { day, period } = modal;
+    const srcKey = slotKey(day, period.id);
+    const bk = getBooking(day, period.id);
+    if (!bk) return;
+
+    const targetMondayDate = addWeeks(monday, targetWeekOffset);
+    const targetWk = weekKey(targetMondayDate);
+    const targetPeriod = periods.find(p => p.id === targetPeriodId);
+    if (!targetPeriod) return;
+    const targetKey = slotKey(targetDay, targetPeriodId);
+
+    const isDoubleFirst = !bk.isDoubleSecond && !!bk.doubleId;
+    const srcDoubleKey = isDoubleFirst ? bk.doublePartnerKey : null;
+    const partnerBk = srcDoubleKey ? bookings[wk]?.[srcDoubleKey] : null;
+    const targetNextPeriod = isDoubleFirst ? getNextLessonPeriod(targetPeriodId, periods) : null;
+    const targetDoubleKey = targetNextPeriod ? slotKey(targetDay, targetNextPeriod.id) : null;
+
+    const buildMoved = (srcBk, isSecond = false) => {
+      const tgtPeriod = isSecond ? targetNextPeriod : targetPeriod;
+      const { recurring, recurWeeks, pendingKey, ...rest } = srcBk;
+      return {
+        ...rest,
+        day: targetDay,
+        periodLabel: tgtPeriod.label,
+        periodTime: tgtPeriod.time,
+        status: approve ? "confirmed" : srcBk.status,
+        ...(isDoubleFirst && !isSecond ? { doublePartnerKey: targetDoubleKey, doublePeriodLabel: targetNextPeriod?.label, doublePeriodTime: targetNextPeriod?.time } : {}),
+        ...(isSecond ? { isDoubleSecond: true, doublePartnerKey: targetKey } : {}),
+      };
+    };
+
+    const nextAll = { ...bookings };
+
+    if (recurMode === "all" && bk.recurId) {
+      for (const [wkk, slots] of Object.entries(nextAll)) {
+        const slotBk = slots?.[srcKey];
+        if (!slotBk || slotBk.recurId !== bk.recurId) continue;
+        const slotPartner = srcDoubleKey ? slots[srcDoubleKey] : null;
+        const updated = { ...slots };
+        delete updated[srcKey];
+        if (srcDoubleKey) delete updated[srcDoubleKey];
+        updated[targetKey] = buildMoved({ ...slotBk });
+        if (isDoubleFirst && targetDoubleKey && targetNextPeriod && slotPartner) {
+          updated[targetDoubleKey] = buildMoved({ ...slotPartner }, true);
+        }
+        nextAll[wkk] = updated;
+        await persist(wkk, updated);
+      }
+    } else {
+      const srcSlots = { ...(nextAll[wk] || {}) };
+      delete srcSlots[srcKey];
+      if (srcDoubleKey) delete srcSlots[srcDoubleKey];
+      nextAll[wk] = srcSlots;
+      await persist(wk, srcSlots);
+
+      const existingTarget = nextAll[targetWk] || (await dbLoad(dbKeyFn(lab, targetWk)));
+      const tgtSlots = { ...existingTarget };
+      tgtSlots[targetKey] = buildMoved({ ...bk });
+      if (isDoubleFirst && targetDoubleKey && targetNextPeriod && partnerBk) {
+        tgtSlots[targetDoubleKey] = buildMoved({ ...partnerBk }, true);
+      }
+      nextAll[targetWk] = tgtSlots;
+      await persist(targetWk, tgtSlots);
+    }
+
+    setBookings(nextAll);
+    setModal(null);
+    onToast(approve ? "Booking approved & moved ✓" : "Booking moved ✓");
+  };
+
   const toggleSelectMode = () => { setSelectMode((v) => !v); setSelectedSlots(new Set()); };
 
   const toggleSlotSelection = (day, periodId) => {
@@ -1679,6 +1871,9 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
           conflictBooking={getCrossBooking(modal.day, modal.period.id)}
           conflictBooking2={getCross2Booking(modal.day, modal.period.id)}
           conflictBooking2Name={cross2Name}
+          onAdminMove={handleAdminMove}
+          allBookings={bookings}
+          monday={monday}
           onSave={handleSave}
           onAdminSave={handleAdminDirectSave}
           onClosure={handleClosure}
