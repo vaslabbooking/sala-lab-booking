@@ -597,6 +597,27 @@ const css = `
 
   /* Toast */
   .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--toast-bg); border: 1px solid var(--toast-border); color: #f1f5f9; padding: 12px 20px; border-radius: 10px; font-size: 0.85rem; z-index: 2000; animation: fadeIn 0.2s ease; white-space: nowrap; }
+
+  /* Week Overview */
+  .overview-wrap { flex: 1; overflow: auto; padding: 24px; display: flex; flex-direction: column; }
+  .overview-header { display: grid; grid-template-columns: 56px repeat(5, 1fr); min-width: 600px; position: sticky; top: 0; z-index: 2; background: var(--bg); padding-bottom: 6px; }
+  .overview-axis-spacer { /* empty */ }
+  .overview-day-header { text-align: center; font-family: 'DM Mono', monospace; font-size: 0.78rem; font-weight: 500; color: var(--text3); padding: 8px 4px; border-bottom: 1px solid var(--border); }
+  .overview-main { position: relative; display: grid; grid-template-columns: 56px repeat(5, 1fr); height: 1080px; min-width: 600px; border-bottom: 1px solid var(--border); }
+  .overview-axis { position: relative; border-right: 1px solid var(--border2); }
+  .overview-time-label { position: absolute; right: 8px; transform: translateY(-50%); font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text5); white-space: nowrap; pointer-events: none; }
+  .overview-day-col { position: relative; border-right: 1px solid var(--border); }
+  .overview-gridline { position: absolute; left: 0; right: 0; height: 1px; background: var(--border); pointer-events: none; }
+  .overview-gridline.hour { background: var(--border2); }
+  .overview-block { position: absolute; left: 3px; right: 3px; border-radius: 5px; border: 1px solid; padding: 3px 7px; overflow: hidden; cursor: pointer; transition: filter 0.15s; }
+  .overview-block:hover { filter: brightness(1.12); }
+  .overview-block.pending { opacity: 0.65; border-style: dashed; }
+  .overview-block-teacher { font-size: 0.72rem; font-weight: 600; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
+  .overview-block-class { font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .overview-block-source { font-family: 'DM Mono', monospace; font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 1px; }
+  .overview-legend { display: flex; gap: 20px; padding: 12px 24px; border-top: 1px solid var(--border); background: var(--bg3); align-items: center; }
+  .overview-legend-item { display: flex; align-items: center; gap: 7px; font-size: 0.75rem; color: var(--text5); }
+  .overview-legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
 `;
 
 
@@ -2062,6 +2083,215 @@ function ApprovalScreen({ action, token, pendingKey, accentColor }) {
   );
 }
 
+// ─── Week Overview ────────────────────────────────────────────────────────────
+
+function parsePeriodRange(timeStr) {
+  const parts = timeStr.split("–").map((s) => s.trim());
+  const toMin = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+  return { start: toMin(parts[0]), end: toMin(parts[1]) };
+}
+
+const OVERVIEW_START_MIN = 450; // 07:30
+const OVERVIEW_END_MIN   = 990; // 16:30
+const OVERVIEW_RANGE     = 540; // minutes
+
+function WeekOverview({ monday, inLabBookings, primaryBookings }) {
+  const wk = weekKey(monday);
+  const secSlots = inLabBookings[wk] || {};
+  const priSlots = primaryBookings[wk] || {};
+
+  const [popup, setPopup] = useState(null);
+
+  const toTopPct    = (min) => ((min - OVERVIEW_START_MIN) / OVERVIEW_RANGE) * 100;
+  const toHeightPct = (s, e) => ((e - s) / OVERVIEW_RANGE) * 100;
+
+  // Time labels every 30 min
+  const timeLabels = [];
+  for (let m = OVERVIEW_START_MIN; m <= OVERVIEW_END_MIN; m += 30) timeLabels.push(m);
+
+  // Build blocks for a given day from both booking sources
+  const buildBlocks = (day) => {
+    const blocks = [];
+
+    // Secondary bookings
+    for (const period of PERIODS) {
+      if (period.type !== "lesson") continue;
+      const key = slotKey(day, period.id);
+      const bk = secSlots[key];
+      if (!bk || bk.status === "closed") continue;
+      if (bk.isDoubleSecond) continue; // covered by the first slot's block
+
+      const { start } = parsePeriodRange(period.time);
+      let end = parsePeriodRange(period.time).end;
+      if (bk.doubleId && !bk.isDoubleSecond) {
+        for (const p2 of PERIODS) {
+          const partner = secSlots[slotKey(day, p2.id)];
+          if (partner?.doubleId === bk.doubleId && partner?.isDoubleSecond) {
+            end = parsePeriodRange(p2.time).end;
+            break;
+          }
+        }
+      }
+      blocks.push({ bk, start, end, source: "secondary", color: "#3b82f6", period });
+    }
+
+    // Primary bookings
+    for (const period of PRIMARY_PERIODS) {
+      if (period.type !== "lesson") continue;
+      if (PRIMARY_UNAVAILABLE.has(period.id)) continue;
+      const key = slotKey(day, period.id);
+      const bk = priSlots[key];
+      if (!bk || bk.status === "closed") continue;
+      if (bk.isDoubleSecond) continue;
+
+      const { start } = parsePeriodRange(period.time);
+      let end = parsePeriodRange(period.time).end;
+      if (bk.doubleId && !bk.isDoubleSecond) {
+        for (const p2 of PRIMARY_PERIODS) {
+          const partner = priSlots[slotKey(day, p2.id)];
+          if (partner?.doubleId === bk.doubleId && partner?.isDoubleSecond) {
+            end = parsePeriodRange(p2.time).end;
+            break;
+          }
+        }
+      }
+      blocks.push({ bk, start, end, source: "primary", color: "#ec4899", period });
+    }
+
+    return blocks;
+  };
+
+  return (
+    <div className="overview-wrap">
+      {/* Day header row */}
+      <div className="overview-header">
+        <div className="overview-axis-spacer" />
+        {DAYS.map((d) => <div key={d} className="overview-day-header">{d}</div>)}
+      </div>
+
+      {/* Main time grid */}
+      <div className="overview-main">
+        {/* Time axis */}
+        <div className="overview-axis">
+          {timeLabels.map((min) => (
+            <div key={min} className="overview-time-label" style={{ top: `${toTopPct(min)}%` }}>
+              {String(Math.floor(min / 60)).padStart(2, "0")}:{String(min % 60).padStart(2, "0")}
+            </div>
+          ))}
+        </div>
+
+        {/* Day columns */}
+        {DAYS.map((day) => {
+          const blocks = buildBlocks(day);
+          return (
+            <div key={day} className="overview-day-col">
+              {/* Horizontal gridlines */}
+              {timeLabels.map((min) => (
+                <div key={min} className={`overview-gridline${min % 60 === 0 ? " hour" : ""}`}
+                  style={{ top: `${toTopPct(min)}%` }} />
+              ))}
+              {/* Booking blocks */}
+              {blocks.map((block, i) => {
+                const heightPct = toHeightPct(block.start, block.end);
+                const tinyBlock = heightPct < 5; // < ~27px — hide detail text
+                return (
+                  <div key={i}
+                    className={`overview-block${block.bk.status === "pending" ? " pending" : ""}`}
+                    style={{
+                      top:    `${toTopPct(block.start)}%`,
+                      height: `${Math.max(heightPct, 2)}%`,
+                      background: block.color + "22",
+                      borderColor: block.color + "88",
+                      borderLeftColor: block.color,
+                      borderLeftWidth: "3px",
+                    }}
+                    onClick={() => setPopup({ ...block, day })}
+                  >
+                    {!tinyBlock && <>
+                      <div className="overview-block-teacher">{block.bk.teacher}</div>
+                      <div className="overview-block-class">{block.bk.class}</div>
+                      <div className="overview-block-source" style={{ color: block.color }}>
+                        {block.source}
+                        {block.bk.status === "pending" ? " · pending" : ""}
+                      </div>
+                    </>}
+                    {tinyBlock && (
+                      <div className="overview-block-teacher" style={{ fontSize: "0.58rem" }}>{block.bk.teacher}</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Legend */}
+      <div className="overview-legend">
+        <div className="overview-legend-item">
+          <div className="overview-legend-dot" style={{ background: "#3b82f6" }} />
+          Secondary Lab Booking
+        </div>
+        <div className="overview-legend-item">
+          <div className="overview-legend-dot" style={{ background: "#ec4899" }} />
+          Primary Lab Booking
+        </div>
+        <div className="overview-legend-item" style={{ marginLeft: "auto", fontFamily: "DM Mono, monospace", fontSize: "0.7rem" }}>
+          Click any block to view details
+        </div>
+      </div>
+
+      {/* Read-only detail popup */}
+      {popup && (
+        <div className="modal-overlay" onClick={() => setPopup(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <div className="modal-title">
+                  {popup.day} — {popup.period.label}
+                </div>
+                <div className="modal-sub" style={{ color: popup.color }}>
+                  {popup.source === "primary" ? "Primary Lab Booking" : "Secondary Lab Booking"}
+                  {" · "}{popup.period.time}
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setPopup(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="pending-info-box">
+                {popup.bk.status === "pending" && (
+                  <div className="pending-status-badge">⏳ Pending approval</div>
+                )}
+                {[
+                  ["Teacher",   popup.bk.teacher],
+                  ["Class",     popup.bk.class],
+                  ["Subject",   popup.bk.subject],
+                  ["Period",    popup.bk.periodLabel ? `${popup.bk.periodLabel} (${popup.bk.periodTime || ""})` : null],
+                  ["Activity",  popup.bk.activityOverview],
+                  ["Equipment", popup.bk.requiredEquipment],
+                  ["Students",  popup.bk.numStudents
+                    ? `${popup.bk.numStudents}${popup.bk.numGroups ? ` (${popup.bk.numGroups} groups)` : ""}`
+                    : null],
+                  ["Recurring", popup.bk.recurring ? `Yes — ${popup.bk.recurWeeks} weeks` : null],
+                  ["Colour",    popup.bk.color ? null : null], // omit colour row
+                ].filter(([, v]) => v).map(([label, value]) => (
+                  <div key={label} className="pending-info-row">
+                    <span className="pending-info-label">{label}</span>
+                    <span className="pending-info-value">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-cancel" onClick={() => setPopup(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Lab View ─────────────────────────────────────────────────────────────────
 
 function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onToggleTheme }) {
@@ -2169,6 +2399,12 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
           {isAdmin && pendingLoans > 0 && <span className="tab-pending-badge">⏳ {pendingLoans}</span>}
           {conflictCount > 0 && tab !== "loans" && <span className="tab-conflict-badge">⚠ {conflictCount}</span>}
         </button>
+        {isAdmin && (
+          <button className={`tab-btn${tab === "overview" ? " active" : ""}`} onClick={() => setTab("overview")}
+            style={tab === "overview" ? { color: "#94a3b8", background: "rgba(148,163,184,0.08)" } : {}}>
+            Week Overview
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -2190,6 +2426,8 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
           onSaveState={setSaveState} isAdmin={isAdmin} onToast={showToast}
           periods={PRIMARY_PERIODS}
         />
+      ) : tab === "overview" ? (
+        <WeekOverview monday={monday} inLabBookings={inLabBookings} primaryBookings={primaryBookings} />
       ) : (
         <TimetableGrid
           accentColor={labInfo.color} bookings={loansBookings} setBookings={setLoans}
