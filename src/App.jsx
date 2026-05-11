@@ -924,6 +924,7 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
 
   const upd = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const canSave = form.teacher.trim() && form.class.trim() && form.subject.trim()
+    && form.activityOverview.trim()
     && !(doubleMode && nextAlreadyBooked);
 
   // Closed slot view
@@ -1223,13 +1224,14 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
             </div>
           )}
 
-          <div className="divider">Optional Details</div>
-
           <div className="field-group">
-            <label className="field-label">Activity Overview</label>
+            <label className="field-label">Activity Overview <span className="required">*</span></label>
             <textarea className="field-textarea" value={form.activityOverview} onChange={upd("activityOverview")}
               placeholder={isLoans ? "What will the equipment be used for?" : "Brief description of what the class will be doing…"} />
           </div>
+
+          <div className="divider">Optional Details</div>
+
           <div className="field-group">
             <label className="field-label">Required Equipment</label>
             <textarea className="field-textarea" value={form.requiredEquipment} onChange={upd("requiredEquipment")}
