@@ -2281,18 +2281,61 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
     break2: "pp8", // primary period 8 falls during the secondary afternoon break
   };
 
+  // Row heights matching CSS: lesson=72, break=30, lunch=40
+  const ROW_H = (p) => p.id === "lunch" ? 40 : p.type === "break" ? 30 : 72;
+
+  // Pre-compute which cells are "eaten" by an adjacent double-period span above them.
+  // spannedSec/Pri: Set of `${day}_${ri}` (ri = index in PERIODS array)
+  const spannedSec = new Set();
+  const spannedPri = new Set();
+  PERIODS.forEach((period, ri) => {
+    DAYS.forEach((day) => {
+      // Secondary: lesson period that is first half of a double
+      if (period.type !== "break") {
+        const secBk = inLabBookings[wk]?.[slotKey(day, period.id)];
+        if (secBk && !secBk.isDoubleSecond && secBk.doubleId) {
+          const nextRi = ri + 1;
+          if (nextRi < PERIODS.length) {
+            const nextBk = inLabBookings[wk]?.[slotKey(day, PERIODS[nextRi].id)];
+            if (nextBk?.doubleId === secBk.doubleId && nextBk?.isDoubleSecond) {
+              spannedSec.add(`${day}_${nextRi}`);
+            }
+          }
+        }
+      }
+      // Primary: period mapped in this overview row that is first half of a double
+      const priPeriodId = SEC_TO_PRI_OVERVIEW[period.id];
+      if (priPeriodId) {
+        const priBk = primaryBookings[wk]?.[slotKey(day, priPeriodId)];
+        if (priBk && !priBk.isDoubleSecond && priBk.doubleId) {
+          const partnerPriId = priBk.doublePartnerKey?.split("_").slice(1).join("_");
+          if (partnerPriId) {
+            const partnerSecId = Object.entries(SEC_TO_PRI_OVERVIEW).find(([, v]) => v === partnerPriId)?.[0];
+            if (partnerSecId) {
+              const partnerRi = PERIODS.findIndex(p => p.id === partnerSecId);
+              if (partnerRi === ri + 1) spannedPri.add(`${day}_${partnerRi}`);
+            }
+          }
+        }
+      }
+    });
+  });
+
   const currentBk = getBk(selectedSlot);
   const currentPeriods = selectedSlot ? periodsFor(selectedSlot.source) : PERIODS;
   const slotColor = selectedSlot?.source === "primary" ? "#ec4899" : "#3b82f6";
 
-  const CellBlock = ({ bk, source, day, period }) => {
+  const CellBlock = ({ bk, source, day, period, bottomExt = null }) => {
     const color = source === "primary" ? "#ec4899" : "#3b82f6";
     const isPending = bk.status === "pending";
     const isCont = bk.isDoubleSecond;
+    const spanStyle = bottomExt !== null ? {
+      position: "absolute", top: "3px", left: "4px", right: "4px", bottom: `${bottomExt}px`, zIndex: 2,
+    } : {};
     return (
       <div
         className={`overview-cell-block${isPending ? " pending-block" : ""}${isCont ? " double-cont" : ""}`}
-        style={{ background: color + (isCont ? "10" : "20"), borderColor: color + (isCont ? "44" : "88"), borderLeftColor: color, borderLeftStyle: isCont ? "dashed" : "solid" }}
+        style={{ background: color + (isCont ? "10" : "20"), borderColor: color + (isCont ? "44" : "88"), borderLeftColor: color, borderLeftStyle: isCont ? "dashed" : "solid", ...spanStyle }}
         onClick={() => setSelectedSlot({ source, day, period })}
       >
         {!isCont && <div className="overview-cell-teacher">{bk.teacher}</div>}
@@ -2316,7 +2359,7 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
         </div>
 
         {/* Period rows */}
-        {PERIODS.map((period) => {
+        {PERIODS.map((period, ri) => {
           const priPeriodId = SEC_TO_PRI_OVERVIEW[period.id];
           const priPeriod   = priPeriodId ? PRIMARY_PERIODS.find(p => p.id === priPeriodId) : null;
           const isBreak     = period.type === "break";
@@ -2338,12 +2381,34 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
                 const priBk = priPeriodId
                   ? (primaryBookings[wk]?.[slotKey(day, priPeriodId)] || null)
                   : null;
-                const showSec = !!secBk;
-                const showPri = !!priBk;
+
+                const secIsSpanned = spannedSec.has(`${day}_${ri}`);
+                const priIsSpanned = spannedPri.has(`${day}_${ri}`);
+
+                // Compute bottom extension for adjacent double-period blocks
+                // bottomExt is a negative CSS bottom value so the block extends into the next row
+                let secBottomExt = null;
+                if (secBk && !secBk.isDoubleSecond && secBk.doubleId && !secIsSpanned) {
+                  if (ri + 1 < PERIODS.length && spannedSec.has(`${day}_${ri + 1}`)) {
+                    secBottomExt = -(ROW_H(PERIODS[ri + 1]) - 2);
+                  }
+                }
+                let priBottomExt = null;
+                if (priBk && !priBk.isDoubleSecond && priBk.doubleId && !priIsSpanned) {
+                  if (ri + 1 < PERIODS.length && spannedPri.has(`${day}_${ri + 1}`)) {
+                    priBottomExt = -(ROW_H(PERIODS[ri + 1]) - 2);
+                  }
+                }
+
+                const showSec = !!secBk && !secIsSpanned;
+                const showPri = !!priBk && !priIsSpanned;
+                const needsRelative = secBottomExt !== null || priBottomExt !== null;
+
                 return (
-                  <div key={day} className="overview-period-cell">
-                    {showSec && <CellBlock bk={secBk} source="secondary" day={day} period={period} />}
-                    {showPri && <CellBlock bk={priBk} source="primary" day={day} period={priPeriod} />}
+                  <div key={day} className="overview-period-cell"
+                    style={needsRelative ? { position: "relative", overflow: "visible" } : undefined}>
+                    {showSec && <CellBlock bk={secBk} source="secondary" day={day} period={period} bottomExt={secBottomExt} />}
+                    {showPri && <CellBlock bk={priBk} source="primary" day={day} period={priPeriod} bottomExt={priBottomExt} />}
                   </div>
                 );
               })}
