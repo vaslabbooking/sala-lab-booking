@@ -2132,6 +2132,12 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
   const wk = weekKey(monday);
 
   const [selectedSlot, setSelectedSlot] = useState(null); // { source, day, period }
+  const [exportOpen, setExportOpen]     = useState(false);
+  const [exportStart, setExportStart]   = useState(() => {
+    const d = new Date(monday); d.setDate(d.getDate() - 28); return weekKey(getMondayOfWeek(d));
+  });
+  const [exportEnd, setExportEnd]       = useState(() => weekKey(monday));
+  const [exporting, setExporting]       = useState(false);
 
   // Helper fns keyed by source
   const bookingsFor    = (src) => src === "primary" ? primaryBookings : inLabBookings;
@@ -2368,6 +2374,54 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
     onToast(approve ? "Booking approved & moved ✓" : "Booking moved ✓");
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    const csvEsc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const headers = ["Lab","Week (Monday)","Day","Period","Time","Type","Teacher","Email","Class","Subject","Activity Overview","Equipment","No. Students","No. Groups","Status","Recurring","Double Period"];
+    const rows = [headers.map(csvEsc).join(",")];
+
+    // Collect all Monday dates in range
+    const cur = new Date(exportStart + "T00:00:00");
+    const end = new Date(exportEnd + "T00:00:00");
+    while (cur <= end) {
+      const wkk = weekKey(new Date(cur));
+      const [secData, priData] = await Promise.all([
+        dbLoad(inLabKey(lab, wkk)),
+        dbLoad(primaryKey(lab, wkk)),
+      ]);
+
+      const addRows = (data, type, periodList) => {
+        for (const [key, bk] of Object.entries(data || {})) {
+          if (!bk || bk.status === "closed" || bk.isDoubleSecond) continue;
+          const us = key.indexOf("_");
+          const day = key.slice(0, us);
+          const pid = key.slice(us + 1);
+          const period = periodList.find(p => p.id === pid);
+          if (!period || period.type === "break") continue;
+          rows.push([
+            lab.toUpperCase(), wkk, day, period.label, period.time, type,
+            bk.teacher, bk.email, bk.class, bk.subject,
+            bk.activityOverview, bk.requiredEquipment,
+            bk.numStudents, bk.numGroups, bk.status,
+            bk.recurId ? "Yes" : "No",
+            bk.doubleId ? "Yes" : "No",
+          ].map(csvEsc).join(","));
+        }
+      };
+      addRows(secData, "Secondary", PERIODS);
+      addRows(priData, "Primary", PRIMARY_PERIODS);
+      cur.setDate(cur.getDate() + 7);
+    }
+
+    const csv = rows.join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url;
+    a.download = `${lab}-bookings-${exportStart}-to-${exportEnd}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+    setExporting(false); setExportOpen(false);
+  };
+
   // Map each secondary period to the corresponding primary period id (if any)
   const SEC_TO_PRI_OVERVIEW = {
     p2: "pp2", p3: "pp3", p4: "pp4", p6: "pp6", p8: "pp9", p9: "pp10",
@@ -2522,7 +2576,42 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
         <div className="overview-legend-item" style={{ marginLeft: "auto", fontFamily: "DM Mono, monospace", fontSize: "0.7rem" }}>
           Click any block to manage
         </div>
+        <button
+          onClick={() => setExportOpen(true)}
+          style={{ marginLeft: 16, fontFamily: "DM Mono, monospace", fontSize: "0.72rem", background: "var(--bg)", border: "1px solid var(--border2)", borderRadius: 6, padding: "5px 12px", cursor: "pointer", color: "var(--text3)", display: "flex", alignItems: "center", gap: 6 }}>
+          ⬇ Export CSV
+        </button>
       </div>
+
+      {exportOpen && (
+        <div className="modal-overlay" onClick={() => !exporting && setExportOpen(false)}>
+          <div className="modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">Export Bookings</div>
+              <button className="modal-close" onClick={() => setExportOpen(false)} disabled={exporting}>×</button>
+            </div>
+            <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div className="field-group">
+                <label className="field-label">From (week starting)</label>
+                <input className="field-input" type="date" value={exportStart} onChange={e => setExportStart(e.target.value)} disabled={exporting} />
+              </div>
+              <div className="field-group">
+                <label className="field-label">To (week starting)</label>
+                <input className="field-input" type="date" value={exportEnd} onChange={e => setExportEnd(e.target.value)} disabled={exporting} />
+              </div>
+              <div style={{ fontSize: "0.78rem", color: "var(--text5)" }}>
+                All confirmed and pending bookings across secondary and primary for this lab will be included.
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-cancel" onClick={() => setExportOpen(false)} disabled={exporting}>Cancel</button>
+              <button className="btn-save" style={{ background: "#10b981" }} onClick={handleExport} disabled={exporting || !exportStart || !exportEnd}>
+                {exporting ? "Exporting…" : "Download CSV"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedSlot && currentBk && (
         <SlotModal
