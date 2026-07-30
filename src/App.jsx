@@ -609,7 +609,7 @@ const css = `
   .overview-break-row { min-height: 30px; background: var(--bg3); }
   .overview-lunch-row { min-height: 40px; }
   .overview-period-cell { padding: 3px 4px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; }
-  .overview-cell-block { border-radius: 5px; border: 1px solid; border-left-width: 3px; padding: 4px 7px; cursor: pointer; transition: filter 0.15s; overflow: hidden; }
+  .overview-cell-block { border-radius: 5px; border: 1px solid; border-left-width: 3px; padding: 4px 7px; cursor: pointer; transition: filter 0.15s; overflow: hidden; flex: 1; }
   .overview-cell-block:hover { filter: brightness(1.12); }
   .overview-cell-block.pending-block { opacity: 0.7; border-style: dashed; border-left-style: solid; }
   .overview-cell-teacher { font-size: 0.72rem; font-weight: 600; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
