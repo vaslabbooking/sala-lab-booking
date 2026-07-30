@@ -597,24 +597,24 @@ const css = `
   .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--toast-bg); border: 1px solid var(--toast-border); color: #f1f5f9; padding: 12px 20px; border-radius: 10px; font-size: 0.85rem; z-index: 2000; animation: fadeIn 0.2s ease; white-space: nowrap; }
 
   /* Week Overview */
-  .overview-wrap { flex: 1; overflow: auto; padding: 24px; display: flex; flex-direction: column; }
-  .overview-header { display: grid; grid-template-columns: 88px repeat(5, 1fr); min-width: 620px; position: sticky; top: 0; z-index: 2; background: var(--bg); padding-bottom: 6px; }
-  .overview-axis-spacer { /* empty */ }
-  .overview-day-header { text-align: center; font-family: 'DM Mono', monospace; font-size: 0.78rem; font-weight: 500; color: var(--text3); padding: 8px 4px; border-bottom: 1px solid var(--border); }
-  .overview-main { position: relative; display: grid; grid-template-columns: 88px repeat(5, 1fr); height: 1080px; min-width: 620px; border-bottom: 1px solid var(--border); }
-  .overview-axis { position: relative; border-right: 1px solid var(--border2); }
-  .overview-time-label { position: absolute; right: 4px; transform: translateY(-50%); font-family: 'DM Mono', monospace; font-size: 0.58rem; color: var(--text5); white-space: nowrap; pointer-events: none; }
-  .overview-period-label { position: absolute; left: 4px; transform: translateY(-50%); font-family: 'DM Mono', monospace; font-size: 0.6rem; color: #3b82f6; font-weight: 500; white-space: nowrap; pointer-events: none; padding: 1px 3px; background: rgba(59,130,246,0.08); border-radius: 3px; }
-  .overview-period-band { position: absolute; left: 0; right: 0; background: rgba(59,130,246,0.03); border-top: 1px dashed rgba(59,130,246,0.18); pointer-events: none; }
-  .overview-day-col { position: relative; border-right: 1px solid var(--border); }
-  .overview-gridline { position: absolute; left: 0; right: 0; height: 1px; background: var(--border); pointer-events: none; }
-  .overview-gridline.hour { background: var(--border2); }
-  .overview-block { position: absolute; left: 3px; right: 3px; border-radius: 5px; border: 1px solid; padding: 3px 7px; overflow: hidden; cursor: pointer; transition: filter 0.15s; }
-  .overview-block:hover { filter: brightness(1.12); }
-  .overview-block.pending { opacity: 0.65; border-style: dashed; }
-  .overview-block-teacher { font-size: 0.72rem; font-weight: 600; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
-  .overview-block-class { font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .overview-block-source { font-family: 'DM Mono', monospace; font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 1px; }
+  .overview-wrap { flex: 1; overflow: auto; display: flex; flex-direction: column; }
+  .overview-table { flex: 1; min-width: 620px; }
+  .overview-row { display: grid; grid-template-columns: 110px repeat(5, 1fr); border-bottom: 1px solid var(--border); }
+  .overview-header-row { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 2px solid var(--border2); }
+  .overview-day-header { text-align: center; font-family: 'DM Mono', monospace; font-size: 0.78rem; font-weight: 500; color: var(--text3); padding: 8px 4px; }
+  .overview-period-col { padding: 6px 10px; border-right: 1px solid var(--border2); display: flex; flex-direction: column; justify-content: center; }
+  .overview-period-name { font-size: 0.72rem; font-weight: 600; color: var(--text2); }
+  .overview-period-time { font-family: 'DM Mono', monospace; font-size: 0.56rem; color: var(--text5); margin-top: 2px; }
+  .overview-lesson-row { min-height: 72px; }
+  .overview-break-row { min-height: 30px; background: var(--bg3); }
+  .overview-lunch-row { min-height: 40px; }
+  .overview-period-cell { padding: 3px 4px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; }
+  .overview-cell-block { border-radius: 5px; border: 1px solid; border-left-width: 3px; padding: 4px 7px; cursor: pointer; transition: filter 0.15s; overflow: hidden; }
+  .overview-cell-block:hover { filter: brightness(1.12); }
+  .overview-cell-block.pending-block { opacity: 0.7; border-style: dashed; border-left-style: solid; }
+  .overview-cell-teacher { font-size: 0.72rem; font-weight: 600; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
+  .overview-cell-class { font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .overview-cell-source { font-family: 'DM Mono', monospace; font-size: 0.56rem; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 1px; }
   .overview-legend { display: flex; gap: 20px; padding: 12px 24px; border-top: 1px solid var(--border); background: var(--bg3); align-items: center; }
   .overview-legend-item { display: flex; align-items: center; gap: 7px; font-size: 0.75rem; color: var(--text5); }
   .overview-legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
@@ -2041,17 +2041,6 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
 
   const [selectedSlot, setSelectedSlot] = useState(null); // { source, day, period }
 
-  const toTopPct    = (min) => ((min - OVERVIEW_START_MIN) / OVERVIEW_RANGE) * 100;
-  const toHeightPct = (s, e) => ((e - s) / OVERVIEW_RANGE) * 100;
-
-  const timeLabels = [];
-  for (let m = OVERVIEW_START_MIN; m <= OVERVIEW_END_MIN; m += 30) timeLabels.push(m);
-
-  // Secondary period markers for left axis + bands
-  const periodMarkers = PERIODS
-    .filter(p => p.type === "lesson")
-    .map(p => ({ label: p.label.replace("Period ", "P"), ...parsePeriodRange(p.time) }));
-
   // Helper fns keyed by source
   const bookingsFor    = (src) => src === "primary" ? primaryBookings : inLabBookings;
   const setBookingsFor = (src) => src === "primary" ? setPrimary : setInLab;
@@ -2068,44 +2057,6 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
   const getBk = (sl) => sl ? bookingsFor(sl.source)[wk]?.[slotKey(sl.day, sl.period.id)] || null : null;
 
   // Build display blocks for a day
-  const buildBlocks = (day) => {
-    const blocks = [];
-    const secSlots = inLabBookings[wk] || {};
-    const priSlots = primaryBookings[wk] || {};
-
-    for (const period of PERIODS) {
-      if (period.type !== "lesson") continue;
-      const bk = secSlots[slotKey(day, period.id)];
-      if (!bk || bk.status === "closed" || bk.isDoubleSecond) continue;
-      const { start } = parsePeriodRange(period.time);
-      let end = parsePeriodRange(period.time).end;
-      if (bk.doubleId) {
-        for (const p2 of PERIODS) {
-          const partner = secSlots[slotKey(day, p2.id)];
-          if (partner?.doubleId === bk.doubleId && partner?.isDoubleSecond) { end = parsePeriodRange(p2.time).end; break; }
-        }
-      }
-      blocks.push({ bk, start, end, source: "secondary", color: "#3b82f6", period });
-    }
-
-    for (const period of PRIMARY_PERIODS) {
-      if (period.type !== "lesson" || PRIMARY_UNAVAILABLE.has(period.id)) continue;
-      const bk = priSlots[slotKey(day, period.id)];
-      if (!bk || bk.status === "closed" || bk.isDoubleSecond) continue;
-      const { start } = parsePeriodRange(period.time);
-      let end = parsePeriodRange(period.time).end;
-      if (bk.doubleId) {
-        for (const p2 of PRIMARY_PERIODS) {
-          const partner = priSlots[slotKey(day, p2.id)];
-          if (partner?.doubleId === bk.doubleId && partner?.isDoubleSecond) { end = parsePeriodRange(p2.time).end; break; }
-        }
-      }
-      blocks.push({ bk, start, end, source: "primary", color: "#ec4899", period });
-    }
-
-    return blocks;
-  };
-
   // ── Admin action handlers ────────────────────────────────────────────────────
 
   const handleSave = async (form) => {
@@ -2324,68 +2275,73 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
     onToast(approve ? "Booking approved & moved ✓" : "Booking moved ✓");
   };
 
+  // Map each secondary period to the corresponding primary period id (if any)
+  const SEC_TO_PRI_OVERVIEW = {
+    p2: "pp2", p3: "pp3", p4: "pp4", p6: "pp6", p8: "pp9", p9: "pp10",
+    break2: "pp8", // primary period 8 falls during the secondary afternoon break
+  };
+
   const currentBk = getBk(selectedSlot);
   const currentPeriods = selectedSlot ? periodsFor(selectedSlot.source) : PERIODS;
   const slotColor = selectedSlot?.source === "primary" ? "#ec4899" : "#3b82f6";
 
+  const CellBlock = ({ bk, source, day, period }) => {
+    const color = source === "primary" ? "#ec4899" : "#3b82f6";
+    const isPending = bk.status === "pending";
+    return (
+      <div
+        className={`overview-cell-block${isPending ? " pending-block" : ""}`}
+        style={{ background: color + "20", borderColor: color + "88", borderLeftColor: color }}
+        onClick={() => setSelectedSlot({ source, day, period })}
+      >
+        <div className="overview-cell-teacher">{bk.teacher}</div>
+        <div className="overview-cell-class">{bk.class}</div>
+        <div className="overview-cell-source" style={{ color }}>
+          {source}{isPending ? " · pending" : ""}
+          {bk.recurId && " ↻"}{bk.doubleId && " ↔"}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="overview-wrap">
-      <div className="overview-header">
-        <div className="overview-axis-spacer" />
-        {DAYS.map((d) => <div key={d} className="overview-day-header">{d}</div>)}
-      </div>
-
-      <div className="overview-main">
-        {/* Axis: time labels + secondary period labels */}
-        <div className="overview-axis">
-          {timeLabels.map((min) => (
-            <div key={min} className="overview-time-label" style={{ top: `${toTopPct(min)}%` }}>
-              {String(Math.floor(min / 60)).padStart(2, "0")}:{String(min % 60).padStart(2, "0")}
-            </div>
-          ))}
-          {periodMarkers.map((pm, i) => (
-            <div key={i} className="overview-period-label" style={{ top: `${toTopPct(pm.start)}%` }}>
-              {pm.label}
-            </div>
-          ))}
+      <div className="overview-table">
+        {/* Header row */}
+        <div className="overview-row overview-header-row">
+          <div className="overview-period-col" style={{ borderRight: "1px solid var(--border2)" }} />
+          {DAYS.map((d) => <div key={d} className="overview-day-header">{d}</div>)}
         </div>
 
-        {DAYS.map((day) => {
-          const blocks = buildBlocks(day);
+        {/* Period rows */}
+        {PERIODS.map((period) => {
+          const priPeriodId = SEC_TO_PRI_OVERVIEW[period.id];
+          const priPeriod   = priPeriodId ? PRIMARY_PERIODS.find(p => p.id === priPeriodId) : null;
+          const isBreak     = period.type === "break";
+          const rowClass    = isBreak
+            ? `overview-row overview-break-row${period.id === "lunch" ? " overview-lunch-row" : ""}`
+            : "overview-row overview-lesson-row";
+
           return (
-            <div key={day} className="overview-day-col">
-              {timeLabels.map((min) => (
-                <div key={min} className={`overview-gridline${min % 60 === 0 ? " hour" : ""}`}
-                  style={{ top: `${toTopPct(min)}%` }} />
-              ))}
-              {periodMarkers.map((pm, i) => (
-                <div key={i} className="overview-period-band"
-                  style={{ top: `${toTopPct(pm.start)}%`, height: `${toHeightPct(pm.start, pm.end)}%` }} />
-              ))}
-              {blocks.map((block, i) => {
-                const heightPct = toHeightPct(block.start, block.end);
-                const tinyBlock = heightPct < 5;
+            <div key={period.id} className={rowClass}>
+              <div className="overview-period-col">
+                <div className="overview-period-name">{period.label}</div>
+                {!isBreak && <div className="overview-period-time">{period.time}</div>}
+                {priPeriod && <div className="overview-period-time" style={{ color: "#ec4899" }}>↕ {priPeriod.label} {priPeriod.time}</div>}
+              </div>
+              {DAYS.map((day) => {
+                const secBk = !isBreak
+                  ? (inLabBookings[wk]?.[slotKey(day, period.id)] || null)
+                  : null;
+                const priBk = priPeriodId
+                  ? (primaryBookings[wk]?.[slotKey(day, priPeriodId)] || null)
+                  : null;
+                const showSec = !!secBk && !secBk.isDoubleSecond;
+                const showPri = !!priBk && !priBk.isDoubleSecond;
                 return (
-                  <div key={i}
-                    className={`overview-block${block.bk.status === "pending" ? " pending" : ""}`}
-                    style={{
-                      top: `${toTopPct(block.start)}%`,
-                      height: `${Math.max(heightPct, 2)}%`,
-                      background: block.color + "22",
-                      borderColor: block.color + "88",
-                      borderLeftColor: block.color,
-                      borderLeftWidth: "3px",
-                    }}
-                    onClick={() => setSelectedSlot({ source: block.source, day, period: block.period })}
-                  >
-                    {!tinyBlock && <>
-                      <div className="overview-block-teacher">{block.bk.teacher}</div>
-                      <div className="overview-block-class">{block.bk.class}</div>
-                      <div className="overview-block-source" style={{ color: block.color }}>
-                        {block.source}{block.bk.status === "pending" ? " · pending" : ""}
-                      </div>
-                    </>}
-                    {tinyBlock && <div className="overview-block-teacher" style={{ fontSize: "0.58rem" }}>{block.bk.teacher}</div>}
+                  <div key={day} className="overview-period-cell">
+                    {showSec && <CellBlock bk={secBk} source="secondary" day={day} period={period} />}
+                    {showPri && <CellBlock bk={priBk} source="primary" day={day} period={priPeriod} />}
                   </div>
                 );
               })}
@@ -2397,11 +2353,11 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
       <div className="overview-legend">
         <div className="overview-legend-item">
           <div className="overview-legend-dot" style={{ background: "#3b82f6" }} />
-          Secondary Lab Booking
+          Secondary
         </div>
         <div className="overview-legend-item">
           <div className="overview-legend-dot" style={{ background: "#ec4899" }} />
-          Primary Lab Booking
+          Primary
         </div>
         <div className="overview-legend-item" style={{ marginLeft: "auto", fontFamily: "DM Mono, monospace", fontSize: "0.7rem" }}>
           Click any block to manage
