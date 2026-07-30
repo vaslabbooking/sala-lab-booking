@@ -2288,17 +2288,19 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
   const CellBlock = ({ bk, source, day, period }) => {
     const color = source === "primary" ? "#ec4899" : "#3b82f6";
     const isPending = bk.status === "pending";
+    const isCont = bk.isDoubleSecond;
     return (
       <div
-        className={`overview-cell-block${isPending ? " pending-block" : ""}`}
-        style={{ background: color + "20", borderColor: color + "88", borderLeftColor: color }}
+        className={`overview-cell-block${isPending ? " pending-block" : ""}${isCont ? " double-cont" : ""}`}
+        style={{ background: color + (isCont ? "10" : "20"), borderColor: color + (isCont ? "44" : "88"), borderLeftColor: color, borderLeftStyle: isCont ? "dashed" : "solid" }}
         onClick={() => setSelectedSlot({ source, day, period })}
       >
-        <div className="overview-cell-teacher">{bk.teacher}</div>
-        <div className="overview-cell-class">{bk.class}</div>
-        <div className="overview-cell-source" style={{ color }}>
+        {!isCont && <div className="overview-cell-teacher">{bk.teacher}</div>}
+        {!isCont && <div className="overview-cell-class">{bk.class}</div>}
+        {isCont && <div className="overview-cell-teacher" style={{ opacity: 0.6 }}>{bk.teacher}</div>}
+        <div className="overview-cell-source" style={{ color, opacity: isCont ? 0.7 : 1 }}>
           {source}{isPending ? " · pending" : ""}
-          {bk.recurId && " ↻"}{bk.doubleId && " ↔"}
+          {bk.recurId && " ↻"}{isCont ? " ↔ cont." : bk.doubleId ? " ↔" : ""}
         </div>
       </div>
     );
@@ -2336,8 +2338,8 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
                 const priBk = priPeriodId
                   ? (primaryBookings[wk]?.[slotKey(day, priPeriodId)] || null)
                   : null;
-                const showSec = !!secBk && !secBk.isDoubleSecond;
-                const showPri = !!priBk && !priBk.isDoubleSecond;
+                const showSec = !!secBk;
+                const showPri = !!priBk;
                 return (
                   <div key={day} className="overview-period-cell">
                     {showSec && <CellBlock bk={secBk} source="secondary" day={day} period={period} />}
