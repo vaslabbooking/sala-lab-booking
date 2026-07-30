@@ -176,7 +176,6 @@ function weekKey(monday) {
 }
 function slotKey(day, periodId) { return `${day}_${periodId}`; }
 const inLabKey     = (lab, wk) => `bookings_${lab}_${wk}`;
-const loansKey     = (lab, wk) => `loans_${lab}_${wk}`;
 const primaryKey   = (lab, wk) => `primary_${lab}_${wk}`;
 
 function getNextLessonPeriod(periodId, periods = PERIODS) {
@@ -189,15 +188,14 @@ function getNextLessonPeriod(periodId, periods = PERIODS) {
 }
 
 // Build a per-day map of which cells to skip (consumed by rowspan) or span
-function buildMergeMap(day, weekSlots, isLoans = false, periods = PERIODS) {
+function buildMergeMap(day, weekSlots, periods = PERIODS) {
   const map = {};
   let i = 0;
   while (i < periods.length) {
     const period = periods[i];
     const bk = weekSlots?.[slotKey(day, period.id)];
 
-    // Merge consecutive closed slots with the same reason — only on the lab's own tab
-    if (!isLoans && bk?.status === "closed") {
+    if (bk?.status === "closed") {
       let span = 1;
       for (let j = i + 1; j < periods.length; j++) {
         const nextBk = weekSlots?.[slotKey(day, periods[j].id)];
@@ -767,7 +765,7 @@ function ChangePasswordPanel({ adminPassword, onToast }) {
 
 // ─── Booking Modal ────────────────────────────────────────────────────────────
 
-function SlotModal({ accentColor, day, period, booking, conflictBooking, conflictBooking2, conflictBooking2Name, onSave, onAdminSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, onAdminMove, onCheckRecurConflicts, isLoans, isPrimary, isAdmin, weekBookings, allBookings, monday, allCrossTabBookings, crossTabPeriodMapForMove, allCross2Bookings, cross2PeriodMapForMove, periods = PERIODS }) {
+function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, onAdminMove, onCheckRecurConflicts, isPrimary, isAdmin, weekBookings, allBookings, monday, allCrossTabBookings, crossTabPeriodMapForMove, periods = PERIODS }) {
   const isNew       = !booking?.teacher && booking?.status !== "closed";
   const isPending   = booking?.status === "pending";
   const isConfirmed = booking?.status === "confirmed";
@@ -805,15 +803,9 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
   const moveSrcKey2 = booking?.doublePartnerKey || null;
 
   const isCrossTabTaken = (pid) => {
-    // Check cross-tab booking (e.g. primary booking blocking secondary slot)
     if (allCrossTabBookings && crossTabPeriodMapForMove) {
       const crossPid = crossTabPeriodMapForMove[pid];
       if (crossPid && allCrossTabBookings[targetMoveWk]?.[slotKey(moveDay, crossPid)]) return true;
-    }
-    // Check second cross-tab (loans: primary bookings)
-    if (allCross2Bookings && cross2PeriodMapForMove) {
-      const cross2Pid = cross2PeriodMapForMove[pid];
-      if (cross2Pid && allCross2Bookings[targetMoveWk]?.[slotKey(moveDay, cross2Pid)]) return true;
     }
     return false;
   };
@@ -1070,7 +1062,7 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
         <div className="modal-header">
           <div>
             <div className="modal-title">
-              {isNew ? (isLoans ? "Log Equipment Loan" : "Book Slot") : "Edit Booking"}
+              {isNew ? "Book Slot" : "Edit Booking"}
             </div>
             <div className="modal-sub">
               {day} · {period.label} · {period.time}
@@ -1085,32 +1077,6 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
 
         <div className="modal-body">
           {!isNew && isAdmin && moveMode ? movePanelContent : (<>
-          {conflictBooking && (
-            <div className="conflict-warning">
-              <span className="conflict-warning-icon">⚠</span>
-              <span>
-                {isLoans
-                  ? conflictBooking.status === "closed"
-                    ? "The lab is closed for this period. You may still be able to borrow equipment. Check with admin before booking."
-                    : `${conflictBooking.teacher} (secondary) has booked the lab during this period. Check that they are not using the equipment you need before booking.`
-                  : `${conflictBooking.teacher} has booked an equipment loan for this period. Check that they are not using the equipment you need before booking.`
-                }
-              </span>
-            </div>
-          )}
-
-          {conflictBooking2 && (
-            <div className="conflict-warning">
-              <span className="conflict-warning-icon">⚠</span>
-              <span>
-                {isLoans
-                  ? `${conflictBooking2.teacher} (${conflictBooking2Name?.toLowerCase() || "primary"}) has booked the lab during this period. Check that they are not using the equipment you need before booking.`
-                  : `${conflictBooking2.teacher} has booked an equipment loan for this period. Check that they are not using the equipment you need before booking.`
-                }
-              </span>
-            </div>
-          )}
-
           {isNew && isPrimary && (period.id === "pp8" || period.id === "pp10") && (
             <div style={{ fontSize: "0.8rem", color: "#92400e", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "10px 14px", lineHeight: 1.5 }}>
               <strong>NOTE:</strong> {period.id === "pp8"
@@ -1227,7 +1193,7 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
           <div className="field-group">
             <label className="field-label">Activity Overview <span className="required">*</span></label>
             <textarea className="field-textarea" value={form.activityOverview} onChange={upd("activityOverview")}
-              placeholder={isLoans ? "What will the equipment be used for?" : "Brief description of what the class will be doing…"} />
+              placeholder="Brief description of what the class will be doing…" />
           </div>
 
           <div className="divider">Optional Details</div>
@@ -1235,7 +1201,7 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
           <div className="field-group">
             <label className="field-label">Required Equipment</label>
             <textarea className="field-textarea" value={form.requiredEquipment} onChange={upd("requiredEquipment")}
-              placeholder={isLoans ? "Specify items to be loaned out…" : "List any equipment or resources needed…"}
+              placeholder="List any equipment or resources needed…"
               style={{ minHeight: 56 }} />
           </div>
           <div className="row-2">
@@ -1309,21 +1275,13 @@ function SlotModal({ accentColor, day, period, booking, conflictBooking, conflic
 
 // ─── Timetable Grid ───────────────────────────────────────────────────────────
 
-function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, crossBookingsPeriodMap, monday, dbKeyFn, lab, isLoans, isPrimary, crossTabBookings, periodMap, crossTabName, cross2Bookings, cross2BookingsPeriodMap, cross2Name, onSaveState, isAdmin, onToast, periods = PERIODS }) {
+function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, lab, isPrimary, crossTabBookings, periodMap, crossTabName, onSaveState, isAdmin, onToast, periods = PERIODS }) {
   const [modal, setModal]             = useState(null);
   const [selectMode, setSelectMode]   = useState(false);
   const [selectedSlots, setSelectedSlots] = useState(new Set());
   const wk = weekKey(monday);
 
-  const getBooking      = (day, pid) => bookings[wk]?.[slotKey(day, pid)] || null;
-  const getCrossBooking = (day, pid) => {
-    const crossPid = crossBookingsPeriodMap ? (crossBookingsPeriodMap[pid] ?? null) : pid;
-    return crossPid ? crossBookings?.[wk]?.[slotKey(day, crossPid)] || null : null;
-  };
-  const getCross2Booking = (day, pid) => {
-    const crossPid = cross2BookingsPeriodMap ? (cross2BookingsPeriodMap[pid] ?? null) : pid;
-    return crossPid ? cross2Bookings?.[wk]?.[slotKey(day, crossPid)] || null : null;
-  };
+  const getBooking = (day, pid) => bookings[wk]?.[slotKey(day, pid)] || null;
 
   const persist = useCallback(async (wkk, data) => {
     onSaveState("saving");
@@ -1453,7 +1411,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
 
     // Generate token, store it so approve/reject links work
     const token = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    const bkType = isLoans ? "loans" : isPrimary ? "primary" : "inlab";
+    const bkType = isPrimary ? "primary" : "inlab";
     const pendingStorageKey = `pending_${lab}_${wk}_${key}_${bkType}`;
     await dbSave(pendingStorageKey, {
       token, lab, weekKey: wk, slotKey: key,
@@ -1476,7 +1434,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
         : period.time,
     };
 
-    const emailTypeLabel = isLoans ? "Equipment Loan" : isPrimary ? "Primary Lab Booking" : "Secondary Lab Booking";
+    const emailTypeLabel = isPrimary ? "Primary Lab Booking" : "Secondary Lab Booking";
     sendApprovalEmail({
       toEmail:     labInfo.techEmail,
       labName:     labInfo.name,
@@ -1805,7 +1763,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
   };
 
   const weekSlots = bookings[wk] || {};
-  const mergeMaps = Object.fromEntries(DAYS.map((d) => [d, buildMergeMap(d, weekSlots, isLoans, periods)]));
+  const mergeMaps = Object.fromEntries(DAYS.map((d) => [d, buildMergeMap(d, weekSlots, periods)]));
 
   const pendingCount = Object.values(weekSlots).filter((b) => b.status === "pending").length;
 
@@ -1861,12 +1819,10 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
                   const isMerged = rowspan > 1;
 
                   const bk        = getBooking(day, period.id);
-                  const cross     = getCrossBooking(day, period.id);
                   const isPending = bk?.status === "pending";
                   const isClosed  = bk?.status === "closed";
                   const color     = isClosed ? "#64748b" : isPending ? "#86efac" : (bk?.color || accentColor);
                   const isSelected = selectMode && isAdmin && bk && selectedSlots.has(slotKey(day, period.id));
-                  const cross2     = getCross2Booking(day, period.id);
                   const isPrimaryUnavail = isPrimary && PRIMARY_UNAVAILABLE.has(period.id);
                   const crossTabPeriodId = periodMap?.[period.id];
                   const crossTabBk = !bk && crossTabPeriodId ? crossTabBookings?.[wk]?.[slotKey(day, crossTabPeriodId)] : null;
@@ -1920,7 +1876,6 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
                             ) : isPending ? (
                               <>
                                 <div className="slot-badges">
-                                  {cross && <span className="slot-conflict-icon" style={{ color: "#a3623a" }}>⚠</span>}
                                   {(bk.recurId || bk.recurring) && <span className="slot-recur" style={{ opacity: 0.5 }}>↻</span>}
                                   {bk.doubleId && <span className="slot-double" style={{ opacity: 0.5 }}>↔</span>}
                                 </div>
@@ -1930,7 +1885,6 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
                             ) : (
                               <>
                                 <div className="slot-badges">
-                                  {cross && <span className="slot-conflict-icon">⚠</span>}
                                   {bk.recurId && <span className="slot-recur">↻</span>}
                                   {bk.doubleId && !isMerged && <span className="slot-double">↔</span>}
                                 </div>
@@ -1946,17 +1900,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
                             )
                           ) : (
                             <>
-                              <div className="slot-badges">
-                                {cross && !isLoans && <span className="slot-conflict-icon">⚠</span>}
-                                {cross && isLoans && cross.status === "closed" && <span style={{ fontSize: "0.62rem", lineHeight: 1 }}>🚫</span>}
-                                {cross && isLoans && cross.status !== "closed" && <span className="slot-conflict-icon">⚠</span>}
-                                {!cross && cross2 && isLoans && <span className="slot-conflict-icon">⚠</span>}
-                              </div>
-                              <div className="conflict-avail-hint">
-                                <div className="slot-avail-text">available</div>
-                                {cross && isLoans && <div className="slot-avail-text">{cross.status === "closed" ? "lab closed" : "secondary booking"}</div>}
-                                {!cross && cross2 && isLoans && <div className="slot-avail-text">primary booking</div>}
-                              </div>
+                              <div className="slot-avail-text">available</div>
                             </>
                           )}
                         </div>
@@ -1977,7 +1921,6 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
         <div className="legend-item"><div className="leg-closed" />Closed</div>
         <div className="legend-item"><span style={{ fontSize: "0.85rem" }}>↻</span> Recurring</div>
         <div className="legend-item"><span style={{ fontSize: "0.85rem" }}>↔</span> Double period</div>
-        <div className="legend-item"><span style={{ fontSize: "0.85rem", color: "#f97316" }}>⚠</span>{isLoans ? " Lab booked" : " Loan booked"}</div>
         <div style={{ marginLeft: "auto", color: "#334155", fontSize: "0.7rem", fontFamily: "DM Mono, monospace" }}>
           Click any slot to book or view details
         </div>
@@ -1989,17 +1932,12 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
           day={modal.day}
           period={modal.period}
           booking={getBooking(modal.day, modal.period.id)}
-          conflictBooking={getCrossBooking(modal.day, modal.period.id)}
-          conflictBooking2={getCross2Booking(modal.day, modal.period.id)}
-          conflictBooking2Name={cross2Name}
           onAdminMove={handleAdminMove}
           onCheckRecurConflicts={handleCheckRecurConflicts}
           allBookings={bookings}
           monday={monday}
           allCrossTabBookings={crossTabBookings}
           crossTabPeriodMapForMove={periodMap}
-          allCross2Bookings={cross2Bookings}
-          cross2PeriodMapForMove={cross2BookingsPeriodMap}
           onSave={handleSave}
           onAdminSave={handleAdminDirectSave}
           onClosure={handleClosure}
@@ -2007,7 +1945,6 @@ function TimetableGrid({ accentColor, bookings, setBookings, crossBookings, cros
           onDelete={handleDelete}
           onAdminApprove={handleAdminApprove}
           onAdminReject={handleAdminReject}
-          isLoans={isLoans}
           isPrimary={isPrimary}
           isAdmin={isAdmin}
           weekBookings={bookings[wk] || {}}
@@ -2300,7 +2237,6 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
   const labInfo = LABS[lab];
   const [monday, setMonday]       = useState(() => getMondayOfWeek(new Date()));
   const [inLabBookings, setInLab]       = useState({});
-  const [loansBookings, setLoans]       = useState({});
   const [primaryBookings, setPrimary]   = useState({});
   const [tab, setTab]                   = useState("inlab");
   const [loading, setLoading]     = useState(true);
@@ -2319,7 +2255,6 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
     setLoading(true);
     const fetches = [
       dbLoad(inLabKey(lab, wk)).then((d) => setInLab((p) => ({ ...p, [wk]: d }))),
-      dbLoad(loansKey(lab, wk)).then((d) => setLoans((p) => ({ ...p, [wk]: d }))),
       dbLoad(primaryKey(lab, wk)).then((d) => setPrimary((p) => ({ ...p, [wk]: d }))),
     ];
     Promise.all(fetches).then(() => setLoading(false));
@@ -2333,16 +2268,9 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
   const weekLabel = `${fmtDate(monday)} – ${fmtDate(fri)}`;
   const isCurrentWeek = weekKey(getMondayOfWeek(new Date())) === wk;
 
-  const conflictCount = (() => {
-    const il = inLabBookings[wk] || {};
-    const lo = loansBookings[wk] || {};
-    return Object.keys(il).filter((k) => lo[k] && il[k].status !== "pending" && lo[k].status !== "pending").length;
-  })();
-
-  const pendingInLab  = Object.values(inLabBookings[wk]   || {}).filter((b) => b.status === "pending").length;
-  const pendingLoans  = Object.values(loansBookings[wk]   || {}).filter((b) => b.status === "pending").length;
+  const pendingInLab   = Object.values(inLabBookings[wk]   || {}).filter((b) => b.status === "pending").length;
   const pendingPrimary = Object.values(primaryBookings[wk] || {}).filter((b) => b.status === "pending").length;
-  const totalPending  = pendingInLab + pendingLoans + pendingPrimary;
+  const totalPending   = pendingInLab + pendingPrimary;
 
   return (
     <div className="app" style={{ "--accent": labInfo.color }}>
@@ -2388,18 +2316,11 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
           style={tab === "inlab" ? { color: "#3b82f6", background: "rgba(59,130,246,0.08)" } : {}}>
           Secondary Lab Booking
           {isAdmin && pendingInLab > 0 && <span className="tab-pending-badge">⏳ {pendingInLab}</span>}
-          {conflictCount > 0 && tab !== "inlab" && <span className="tab-conflict-badge">⚠ {conflictCount}</span>}
         </button>
         <button className={`tab-btn${tab === "primary" ? " active" : ""}`} onClick={() => setTab("primary")}
           style={tab === "primary" ? { color: "#ec4899", background: "rgba(236,72,153,0.08)" } : {}}>
           Primary Lab Booking
           {isAdmin && pendingPrimary > 0 && <span className="tab-pending-badge">⏳ {pendingPrimary}</span>}
-        </button>
-        <button className={`tab-btn${tab === "loans" ? " active" : ""}`} onClick={() => setTab("loans")}
-          style={tab === "loans" ? { color: "#f97316", background: "rgba(249,115,22,0.08)" } : {}}>
-          Equipment Loans
-          {isAdmin && pendingLoans > 0 && <span className="tab-pending-badge">⏳ {pendingLoans}</span>}
-          {conflictCount > 0 && tab !== "loans" && <span className="tab-conflict-badge">⚠ {conflictCount}</span>}
         </button>
         {isAdmin && (
           <button className={`tab-btn${tab === "overview" ? " active" : ""}`} onClick={() => setTab("overview")}
@@ -2414,31 +2335,21 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
       ) : tab === "inlab" ? (
         <TimetableGrid
           accentColor={labInfo.color} bookings={inLabBookings} setBookings={setInLab}
-          crossBookings={loansBookings}
           crossTabBookings={primaryBookings} periodMap={SECONDARY_TO_PRIMARY} crossTabName="PRIMARY"
-          monday={monday} dbKeyFn={inLabKey} lab={lab} isLoans={false}
+          monday={monday} dbKeyFn={inLabKey} lab={lab}
           onSaveState={setSaveState} isAdmin={isAdmin} onToast={showToast}
         />
       ) : tab === "primary" ? (
         <TimetableGrid
           accentColor={labInfo.color} bookings={primaryBookings} setBookings={setPrimary}
-          crossBookings={loansBookings} crossBookingsPeriodMap={PRIMARY_TO_SECONDARY}
           crossTabBookings={inLabBookings} periodMap={PRIMARY_TO_SECONDARY} crossTabName="SECONDARY"
-          monday={monday} dbKeyFn={primaryKey} lab={lab} isLoans={false} isPrimary={true}
+          monday={monday} dbKeyFn={primaryKey} lab={lab} isPrimary={true}
           onSaveState={setSaveState} isAdmin={isAdmin} onToast={showToast}
           periods={PRIMARY_PERIODS}
         />
       ) : tab === "overview" ? (
         <WeekOverview monday={monday} inLabBookings={inLabBookings} primaryBookings={primaryBookings} />
-      ) : (
-        <TimetableGrid
-          accentColor={labInfo.color} bookings={loansBookings} setBookings={setLoans}
-          crossBookings={inLabBookings}
-          cross2Bookings={primaryBookings} cross2BookingsPeriodMap={SECONDARY_TO_PRIMARY} cross2Name="PRIMARY"
-          monday={monday} dbKeyFn={loansKey} lab={lab} isLoans={true}
-          onSaveState={setSaveState} isAdmin={isAdmin} onToast={showToast}
-        />
-      )}
+      ) : null}
 
       {showAdminLogin && (
         <AdminLoginModal
