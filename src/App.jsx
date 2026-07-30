@@ -776,13 +776,15 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onC
   const isDoubleSecond = !!booking?.isDoubleSecond;
   const isDoubleFirst  = !isDoubleSecond && !!booking?.doubleId;
 
+  const defaultColor = isPrimary ? "#ec4899" : "#3b82f6";
   const [form, setForm] = useState({
-    teacher: "", class: "", subject: "",
+    teacher: "", email: "", class: "", subject: "",
     activityOverview: "", requiredEquipment: "",
     numStudents: "", numGroups: "",
-    color: DEFAULT_COLOR, recurring: false, recurWeeks: 3,
+    color: defaultColor, recurring: false, recurWeeks: 3,
     ...booking,
   });
+  const [approvalColor, setApprovalColor] = useState(booking?.color || defaultColor);
   const [delMode, setDelMode]         = useState(false);
   const [doubleMode, setDoubleMode]   = useState(false);
   const [closureMode, setClosureMode] = useState(false);
@@ -843,12 +845,12 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onC
         return; // show warning — don't move yet
       }
     }
-    onAdminMove({ targetDay: moveDay, targetPeriodId: movePeriodId, targetWeekOffset: moveWeekOffset, recurMode: moveRecurOption, approve });
+    onAdminMove({ targetDay: moveDay, targetPeriodId: movePeriodId, targetWeekOffset: moveWeekOffset, recurMode: moveRecurOption, approve, color: approve ? approvalColor : undefined });
   };
 
   const confirmMoveThisOnly = () => {
     setMoveConflictCount(null);
-    onAdminMove({ targetDay: moveDay, targetPeriodId: movePeriodId, targetWeekOffset: moveWeekOffset, recurMode: "this", approve: moveConflictApprove });
+    onAdminMove({ targetDay: moveDay, targetPeriodId: movePeriodId, targetWeekOffset: moveWeekOffset, recurMode: "this", approve: moveConflictApprove, color: moveConflictApprove ? approvalColor : undefined });
   };
 
   const movePanelContent = (
@@ -917,7 +919,7 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onC
   const periodsAfter = periods.slice(periodIdx + 1);
 
   const upd = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-  const canSave = form.teacher.trim() && form.class.trim() && form.subject.trim()
+  const canSave = form.teacher.trim() && form.email.trim() && form.class.trim() && form.subject.trim()
     && form.activityOverview.trim()
     && !(doubleMode && nextAlreadyBooked);
 
@@ -974,7 +976,7 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onC
           <div className="modal-body">
             <div className="pending-status-badge">⏳ Awaiting lab tech approval</div>
             <div className="pending-info-box">
-              {[["Teacher", booking.teacher], ["Class", booking.class], ["Subject", booking.subject],
+              {[["Teacher", booking.teacher], booking.email && ["Email", booking.email], ["Class", booking.class], ["Subject", booking.subject],
                 booking.activityOverview && ["Activity", booking.activityOverview],
                 booking.requiredEquipment && ["Equipment", booking.requiredEquipment],
                 booking.numStudents && ["Students", `${booking.numStudents}${booking.numGroups ? ` (${booking.numGroups} groups)` : ""}`],
@@ -1018,7 +1020,7 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onC
               <>
                 <div className="pending-status-badge">⏳ Awaiting approval</div>
                 <div className="pending-info-box">
-                  {[["Teacher", booking.teacher], ["Class", booking.class], ["Subject", booking.subject],
+                  {[["Teacher", booking.teacher], booking.email && ["Email", booking.email], ["Class", booking.class], ["Subject", booking.subject],
                     booking.activityOverview && ["Activity", booking.activityOverview],
                     booking.requiredEquipment && ["Equipment", booking.requiredEquipment],
                     booking.numStudents && ["Students", `${booking.numStudents}${booking.numGroups ? ` (${booking.numGroups} groups)` : ""}`],
@@ -1030,8 +1032,12 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onC
                     </div>
                   ))}
                 </div>
+                <div className="field-group" style={{ marginTop: 4 }}>
+                  <label className="field-label">Slot Colour</label>
+                  <ColorPicker value={approvalColor} onChange={setApprovalColor} />
+                </div>
                 <div className="admin-actions">
-                  <button className="btn-approve" onClick={onAdminApprove}>✓ Approve Booking</button>
+                  <button className="btn-approve" onClick={() => onAdminApprove(approvalColor)}>✓ Approve Booking</button>
                   <button className="btn-reject-action" onClick={onAdminReject}>✕ Reject</button>
                   <button className="btn-move-toggle" onClick={() => setMoveMode(true)}>📦 Approve & Move…</button>
                 </div>
@@ -1130,11 +1136,19 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onC
             </>
           ) : (
             <>
+          <div className="row-2">
             <div className="field-group">
-            <label className="field-label">Teacher Name <span className="required">*</span></label>
-            <input className="field-input" value={form.teacher} onChange={upd("teacher")} placeholder="e.g. Ms. Nguyen"
-              readOnly={isConfirmed && !isAdmin}
-              style={isConfirmed && !isAdmin ? { opacity: 0.5, cursor: "not-allowed" } : {}} />
+              <label className="field-label">Teacher Name <span className="required">*</span></label>
+              <input className="field-input" value={form.teacher} onChange={upd("teacher")} placeholder="e.g. Ms. Nguyen"
+                readOnly={isConfirmed && !isAdmin}
+                style={isConfirmed && !isAdmin ? { opacity: 0.5, cursor: "not-allowed" } : {}} />
+            </div>
+            <div className="field-group">
+              <label className="field-label">Email <span className="required">*</span></label>
+              <input className="field-input" type="email" value={form.email} onChange={upd("email")} placeholder="e.g. teacher@vas.edu.vn"
+                readOnly={isConfirmed && !isAdmin}
+                style={isConfirmed && !isAdmin ? { opacity: 0.5, cursor: "not-allowed" } : {}} />
+            </div>
           </div>
           <div className="row-2">
             <div className="field-group">
@@ -1151,7 +1165,7 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onC
             </div>
           </div>
 
-          <ColorPicker value={form.color} onChange={(hex) => setForm((f) => ({ ...f, color: hex }))} />
+          {isAdmin && <ColorPicker value={form.color} onChange={(hex) => setForm((f) => ({ ...f, color: hex }))} />}
 
           {isNew && nextPeriod && (
             <div className="recur-section">
@@ -1281,7 +1295,21 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
   const [modal, setModal]             = useState(null);
   const [selectMode, setSelectMode]   = useState(false);
   const [selectedSlots, setSelectedSlots] = useState(new Set());
+  const [restrictionMsg, setRestrictionMsg] = useState(null);
   const wk = weekKey(monday);
+
+  const checkDateRestriction = (day) => {
+    if (isAdmin) return null;
+    const dayOffset = DAYS.indexOf(day);
+    const slotDate = new Date(monday);
+    slotDate.setDate(slotDate.getDate() + dayOffset);
+    slotDate.setHours(0, 0, 0, 0);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+    if (slotDate < today) return "past";
+    if (slotDate <= tomorrow) return "soon";
+    return null;
+  };
 
   const getBooking = (day, pid) => bookings[wk]?.[slotKey(day, pid)] || null;
 
@@ -1450,7 +1478,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
   };
 
   // Admin: approve pending booking directly in-app
-  const handleAdminApprove = async () => {
+  const handleAdminApprove = async (color) => {
     const { day, period } = modal;
     const key = slotKey(day, period.id);
     const bk = getBooking(day, period.id);
@@ -1470,7 +1498,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
           const slotBk = wkSlots[k];
           if (slotBk) {
             const { recurring, recurWeeks, status, pendingKey, ...rest } = slotBk;
-            wkSlots[k] = { ...rest, recurId, status: "confirmed" };
+            wkSlots[k] = { ...rest, recurId, status: "confirmed", ...(color ? { color } : {}) };
           }
         }
         nextAll[wkk] = wkSlots;
@@ -1482,7 +1510,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
         const slotBk = existing[k];
         if (slotBk) {
           const { recurring, recurWeeks, status, pendingKey, ...rest } = slotBk;
-          existing[k] = { ...rest, status: "confirmed" };
+          existing[k] = { ...rest, status: "confirmed", ...(color ? { color } : {}) };
         }
       }
       nextAll[wk] = existing;
@@ -1600,7 +1628,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
   };
 
   // Admin: move a booking to a different slot/week
-  const handleAdminMove = async ({ targetDay, targetPeriodId, targetWeekOffset, recurMode, approve }) => {
+  const handleAdminMove = async ({ targetDay, targetPeriodId, targetWeekOffset, recurMode, approve, color }) => {
     const { day, period } = modal;
     const srcKey = slotKey(day, period.id);
     const bk = getBooking(day, period.id);
@@ -1627,6 +1655,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
         periodLabel: tgtPeriod.label,
         periodTime: tgtPeriod.time,
         status: approve ? "confirmed" : srcBk.status,
+        ...(color ? { color } : {}),
         ...(isDoubleFirst && !isSecond ? { doublePartnerKey: targetDoubleKey, doublePeriodLabel: targetNextPeriod?.label, doublePeriodTime: targetNextPeriod?.time } : {}),
         ...(isSecond ? { isDoubleSecond: true, doublePartnerKey: targetKey } : {}),
       };
@@ -1840,6 +1869,8 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
                           onClick={() => {
                             if (!isAdmin) return;
                             if (selectMode && bk) { toggleSlotSelection(day, period.id); return; }
+                            const r = checkDateRestriction(day);
+                            if (r) { setRestrictionMsg(r); return; }
                             setModal({ day, period });
                           }}
                         >
@@ -1862,6 +1893,8 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
                           onClick={() => {
                             if (isPrimaryUnavail || isCrossTabConfirmed || isCrossTabPending) return;
                             if (selectMode && isAdmin && bk) { toggleSlotSelection(day, period.id); return; }
+                            const r = checkDateRestriction(day);
+                            if (r) { setRestrictionMsg(r); return; }
                             setModal({ day, period });
                           }}
                         >
@@ -1952,6 +1985,65 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
           weekBookings={bookings[wk] || {}}
           periods={periods}
         />
+      )}
+      {restrictionMsg && (
+        <div className="modal-overlay" onClick={() => setRestrictionMsg(null)}>
+          <div className="modal" style={{ "--accent": accentColor, maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">{restrictionMsg === "past" ? "Cannot book in the past" : "Too soon to book"}</div>
+              <button className="modal-close" onClick={() => setRestrictionMsg(null)}>×</button>
+            </div>
+            <div className="modal-body" style={{ padding: "20px 24px", fontSize: "0.9rem", color: "var(--text2)", lineHeight: 1.6 }}>
+              {restrictionMsg === "past" ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                  <svg width="44" height="64" viewBox="0 0 44 64" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                    {/* amber lamp */}
+                    <rect x="19" y="0" width="6" height="5" rx="1" fill="#FFC107"/>
+                    {/* roof tier 1 (narrow) */}
+                    <rect x="14" y="5" width="16" height="4" rx="1" fill="#1565C0"/>
+                    {/* roof tier 2 (wider) */}
+                    <rect x="6" y="9" width="32" height="4" rx="1" fill="#1976D2"/>
+                    {/* sign band (dark) */}
+                    <rect x="4" y="13" width="36" height="6" rx="0" fill="#0D47A1"/>
+                    {/* body */}
+                    <rect x="4" y="19" width="36" height="37" rx="0" fill="#1E88E5"/>
+                    {/* center vertical divider */}
+                    <rect x="21" y="19" width="2" height="37" fill="#1565C0"/>
+                    {/* horizontal divider (windows / lower panels) */}
+                    <rect x="4" y="32" width="36" height="2" fill="#1565C0"/>
+                    {/* upper-left windows: 2 cols × 2 rows */}
+                    <rect x="6"  y="21" width="6" height="4" fill="#E3F2FD"/>
+                    <rect x="13" y="21" width="6" height="4" fill="#E3F2FD"/>
+                    <rect x="6"  y="27" width="6" height="4" fill="#E3F2FD"/>
+                    <rect x="13" y="27" width="6" height="4" fill="#E3F2FD"/>
+                    {/* upper-right windows: 2 cols × 2 rows */}
+                    <rect x="23" y="21" width="6" height="4" fill="#E3F2FD"/>
+                    <rect x="30" y="21" width="6" height="4" fill="#E3F2FD"/>
+                    <rect x="23" y="27" width="6" height="4" fill="#E3F2FD"/>
+                    <rect x="30" y="27" width="6" height="4" fill="#E3F2FD"/>
+                    {/* lower left panels */}
+                    <rect x="6"  y="35" width="13" height="8"  fill="#1565C0"/>
+                    <rect x="6"  y="44" width="13" height="10" fill="#1565C0"/>
+                    {/* lower right panels */}
+                    <rect x="23" y="35" width="13" height="8"  fill="#1565C0"/>
+                    <rect x="23" y="44" width="13" height="10" fill="#1565C0"/>
+                    {/* base */}
+                    <rect x="0" y="56" width="44" height="8" rx="1" fill="#1976D2"/>
+                  </svg>
+                  <span>Unable to book sessions in the past. Timelords are not an exception.</span>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                  <span style={{ fontSize: "3rem", lineHeight: 1, flexShrink: 0 }}>⏰</span>
+                  <span>It is not permitted to book slots using this system within the same or next day. Please contact the lab technician to do so.</span>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn-cancel" onClick={() => setRestrictionMsg(null)}>OK</button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
@@ -2072,7 +2164,7 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
     onToast("Booking updated ✓");
   };
 
-  const handleAdminApprove = async () => {
+  const handleAdminApprove = async (color) => {
     const sl = selectedSlot;
     if (!sl) return;
     const key = slotKey(sl.day, sl.period.id);
@@ -2090,7 +2182,7 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
         const wkSlots = { ...(await dbLoad(keyFnFor(sl.source)(lab, wkk))) };
         for (const k of keysToApprove) {
           const s = wkSlots[k];
-          if (s) { const { recurring, recurWeeks, status, pendingKey, ...rest } = s; wkSlots[k] = { ...rest, recurId, status: "confirmed" }; }
+          if (s) { const { recurring, recurWeeks, status, pendingKey, ...rest } = s; wkSlots[k] = { ...rest, recurId, status: "confirmed", ...(color ? { color } : {}) }; }
         }
         nextAll[wkk] = wkSlots;
         await persist(sl.source, wkk, wkSlots);
@@ -2099,7 +2191,7 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
       const existing = { ...(nextAll[wk] || {}) };
       for (const k of keysToApprove) {
         const s = existing[k];
-        if (s) { const { recurring, recurWeeks, status, pendingKey, ...rest } = s; existing[k] = { ...rest, status: "confirmed" }; }
+        if (s) { const { recurring, recurWeeks, status, pendingKey, ...rest } = s; existing[k] = { ...rest, status: "confirmed", ...(color ? { color } : {}) }; }
       }
       nextAll[wk] = existing;
       await persist(sl.source, wk, existing);
@@ -2204,7 +2296,7 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
     return conflictCount;
   };
 
-  const handleAdminMove = async ({ targetDay, targetPeriodId, targetWeekOffset, recurMode, approve }) => {
+  const handleAdminMove = async ({ targetDay, targetPeriodId, targetWeekOffset, recurMode, approve, color }) => {
     const sl = selectedSlot;
     if (!sl) return;
     const srcKey = slotKey(sl.day, sl.period.id);
@@ -2229,6 +2321,7 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
       return {
         ...rest, day: targetDay, periodLabel: tgtP.label, periodTime: tgtP.time,
         status: approve ? "confirmed" : srcBk.status,
+        ...(color ? { color } : {}),
         ...(isDoubleFirst && !isSecond ? { doublePartnerKey: targetDoubleKey, doublePeriodLabel: targetNextPeriod?.label, doublePeriodTime: targetNextPeriod?.time } : {}),
         ...(isSecond ? { isDoubleSecond: true, doublePartnerKey: targetKey } : {}),
       };
