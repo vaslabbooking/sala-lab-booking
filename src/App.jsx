@@ -598,12 +598,14 @@ const css = `
 
   /* Week Overview */
   .overview-wrap { flex: 1; overflow: auto; padding: 24px; display: flex; flex-direction: column; }
-  .overview-header { display: grid; grid-template-columns: 56px repeat(5, 1fr); min-width: 600px; position: sticky; top: 0; z-index: 2; background: var(--bg); padding-bottom: 6px; }
+  .overview-header { display: grid; grid-template-columns: 88px repeat(5, 1fr); min-width: 620px; position: sticky; top: 0; z-index: 2; background: var(--bg); padding-bottom: 6px; }
   .overview-axis-spacer { /* empty */ }
   .overview-day-header { text-align: center; font-family: 'DM Mono', monospace; font-size: 0.78rem; font-weight: 500; color: var(--text3); padding: 8px 4px; border-bottom: 1px solid var(--border); }
-  .overview-main { position: relative; display: grid; grid-template-columns: 56px repeat(5, 1fr); height: 1080px; min-width: 600px; border-bottom: 1px solid var(--border); }
+  .overview-main { position: relative; display: grid; grid-template-columns: 88px repeat(5, 1fr); height: 1080px; min-width: 620px; border-bottom: 1px solid var(--border); }
   .overview-axis { position: relative; border-right: 1px solid var(--border2); }
-  .overview-time-label { position: absolute; right: 8px; transform: translateY(-50%); font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text5); white-space: nowrap; pointer-events: none; }
+  .overview-time-label { position: absolute; right: 4px; transform: translateY(-50%); font-family: 'DM Mono', monospace; font-size: 0.58rem; color: var(--text5); white-space: nowrap; pointer-events: none; }
+  .overview-period-label { position: absolute; left: 4px; transform: translateY(-50%); font-family: 'DM Mono', monospace; font-size: 0.6rem; color: #3b82f6; font-weight: 500; white-space: nowrap; pointer-events: none; padding: 1px 3px; background: rgba(59,130,246,0.08); border-radius: 3px; }
+  .overview-period-band { position: absolute; left: 0; right: 0; background: rgba(59,130,246,0.03); border-top: 1px dashed rgba(59,130,246,0.18); pointer-events: none; }
   .overview-day-col { position: relative; border-right: 1px solid var(--border); }
   .overview-gridline { position: absolute; left: 0; right: 0; height: 1px; background: var(--border); pointer-events: none; }
   .overview-gridline.hour { background: var(--border2); }
@@ -2034,64 +2036,68 @@ const OVERVIEW_START_MIN = 450; // 07:30
 const OVERVIEW_END_MIN   = 990; // 16:30
 const OVERVIEW_RANGE     = 540; // minutes
 
-function WeekOverview({ monday, inLabBookings, primaryBookings }) {
+function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPrimary, lab, onSaveState, onToast }) {
   const wk = weekKey(monday);
-  const secSlots = inLabBookings[wk] || {};
-  const priSlots = primaryBookings[wk] || {};
 
-  const [popup, setPopup] = useState(null);
+  const [selectedSlot, setSelectedSlot] = useState(null); // { source, day, period }
 
   const toTopPct    = (min) => ((min - OVERVIEW_START_MIN) / OVERVIEW_RANGE) * 100;
   const toHeightPct = (s, e) => ((e - s) / OVERVIEW_RANGE) * 100;
 
-  // Time labels every 30 min
   const timeLabels = [];
   for (let m = OVERVIEW_START_MIN; m <= OVERVIEW_END_MIN; m += 30) timeLabels.push(m);
 
-  // Build blocks for a given day from both booking sources
+  // Secondary period markers for left axis + bands
+  const periodMarkers = PERIODS
+    .filter(p => p.type === "lesson")
+    .map(p => ({ label: p.label.replace("Period ", "P"), ...parsePeriodRange(p.time) }));
+
+  // Helper fns keyed by source
+  const bookingsFor    = (src) => src === "primary" ? primaryBookings : inLabBookings;
+  const setBookingsFor = (src) => src === "primary" ? setPrimary : setInLab;
+  const keyFnFor       = (src) => src === "primary" ? primaryKey : inLabKey;
+  const periodsFor     = (src) => src === "primary" ? PRIMARY_PERIODS : PERIODS;
+
+  const persist = async (src, wkk, data) => {
+    onSaveState("saving");
+    await dbSave(keyFnFor(src)(lab, wkk), data);
+    onSaveState("saved");
+    setTimeout(() => onSaveState("idle"), 2000);
+  };
+
+  const getBk = (sl) => sl ? bookingsFor(sl.source)[wk]?.[slotKey(sl.day, sl.period.id)] || null : null;
+
+  // Build display blocks for a day
   const buildBlocks = (day) => {
     const blocks = [];
+    const secSlots = inLabBookings[wk] || {};
+    const priSlots = primaryBookings[wk] || {};
 
-    // Secondary bookings
     for (const period of PERIODS) {
       if (period.type !== "lesson") continue;
-      const key = slotKey(day, period.id);
-      const bk = secSlots[key];
-      if (!bk || bk.status === "closed") continue;
-      if (bk.isDoubleSecond) continue; // covered by the first slot's block
-
+      const bk = secSlots[slotKey(day, period.id)];
+      if (!bk || bk.status === "closed" || bk.isDoubleSecond) continue;
       const { start } = parsePeriodRange(period.time);
       let end = parsePeriodRange(period.time).end;
-      if (bk.doubleId && !bk.isDoubleSecond) {
+      if (bk.doubleId) {
         for (const p2 of PERIODS) {
           const partner = secSlots[slotKey(day, p2.id)];
-          if (partner?.doubleId === bk.doubleId && partner?.isDoubleSecond) {
-            end = parsePeriodRange(p2.time).end;
-            break;
-          }
+          if (partner?.doubleId === bk.doubleId && partner?.isDoubleSecond) { end = parsePeriodRange(p2.time).end; break; }
         }
       }
       blocks.push({ bk, start, end, source: "secondary", color: "#3b82f6", period });
     }
 
-    // Primary bookings
     for (const period of PRIMARY_PERIODS) {
-      if (period.type !== "lesson") continue;
-      if (PRIMARY_UNAVAILABLE.has(period.id)) continue;
-      const key = slotKey(day, period.id);
-      const bk = priSlots[key];
-      if (!bk || bk.status === "closed") continue;
-      if (bk.isDoubleSecond) continue;
-
+      if (period.type !== "lesson" || PRIMARY_UNAVAILABLE.has(period.id)) continue;
+      const bk = priSlots[slotKey(day, period.id)];
+      if (!bk || bk.status === "closed" || bk.isDoubleSecond) continue;
       const { start } = parsePeriodRange(period.time);
       let end = parsePeriodRange(period.time).end;
-      if (bk.doubleId && !bk.isDoubleSecond) {
+      if (bk.doubleId) {
         for (const p2 of PRIMARY_PERIODS) {
           const partner = priSlots[slotKey(day, p2.id)];
-          if (partner?.doubleId === bk.doubleId && partner?.isDoubleSecond) {
-            end = parsePeriodRange(p2.time).end;
-            break;
-          }
+          if (partner?.doubleId === bk.doubleId && partner?.isDoubleSecond) { end = parsePeriodRange(p2.time).end; break; }
         }
       }
       blocks.push({ bk, start, end, source: "primary", color: "#ec4899", period });
@@ -2100,63 +2106,286 @@ function WeekOverview({ monday, inLabBookings, primaryBookings }) {
     return blocks;
   };
 
+  // ── Admin action handlers ────────────────────────────────────────────────────
+
+  const handleSave = async (form) => {
+    const sl = selectedSlot;
+    if (!sl) return;
+    const key = slotKey(sl.day, sl.period.id);
+    const bks = bookingsFor(sl.source);
+    const { double: _d, ...rest } = form;
+    const existing = { ...(bks[wk] || {}), [key]: { ...bks[wk]?.[key], ...rest, status: "confirmed" } };
+    setBookingsFor(sl.source)({ ...bks, [wk]: existing });
+    await persist(sl.source, wk, existing);
+    setSelectedSlot(null);
+    onToast("Booking updated ✓");
+  };
+
+  const handleAdminApprove = async () => {
+    const sl = selectedSlot;
+    if (!sl) return;
+    const key = slotKey(sl.day, sl.period.id);
+    const bk = getBk(sl);
+    const bks = bookingsFor(sl.source);
+    const nextAll = { ...bks };
+    const keysToApprove = [key];
+    if (bk.doublePartnerKey) keysToApprove.push(bk.doublePartnerKey);
+
+    if (bk.recurring && bk.recurWeeks > 1) {
+      const recurId = `recur_${Date.now()}_${key}`;
+      for (let i = 0; i < bk.recurWeeks; i++) {
+        const wkDate = addWeeks(getMondayOfWeek(new Date(wk)), i);
+        const wkk = weekKey(wkDate);
+        const wkSlots = { ...(await dbLoad(keyFnFor(sl.source)(lab, wkk))) };
+        for (const k of keysToApprove) {
+          const s = wkSlots[k];
+          if (s) { const { recurring, recurWeeks, status, pendingKey, ...rest } = s; wkSlots[k] = { ...rest, recurId, status: "confirmed" }; }
+        }
+        nextAll[wkk] = wkSlots;
+        await persist(sl.source, wkk, wkSlots);
+      }
+    } else {
+      const existing = { ...(nextAll[wk] || {}) };
+      for (const k of keysToApprove) {
+        const s = existing[k];
+        if (s) { const { recurring, recurWeeks, status, pendingKey, ...rest } = s; existing[k] = { ...rest, status: "confirmed" }; }
+      }
+      nextAll[wk] = existing;
+      await persist(sl.source, wk, existing);
+    }
+    setBookingsFor(sl.source)(nextAll);
+    setSelectedSlot(null);
+    onToast("Booking approved ✓");
+  };
+
+  const handleAdminReject = async () => {
+    const sl = selectedSlot;
+    if (!sl) return;
+    const key = slotKey(sl.day, sl.period.id);
+    const bk = getBk(sl);
+    const bks = bookingsFor(sl.source);
+    const nextAll = { ...bks };
+    const keysToDelete = [key];
+    if (bk?.doublePartnerKey) keysToDelete.push(bk.doublePartnerKey);
+
+    if (bk?.recurring && bk?.recurWeeks > 1) {
+      for (let i = 0; i < bk.recurWeeks; i++) {
+        const wkDate = addWeeks(getMondayOfWeek(new Date(wk)), i);
+        const wkk = weekKey(wkDate);
+        const wkSlots = { ...(await dbLoad(keyFnFor(sl.source)(lab, wkk))) };
+        for (const k of keysToDelete) delete wkSlots[k];
+        nextAll[wkk] = wkSlots;
+        await persist(sl.source, wkk, wkSlots);
+      }
+    } else {
+      const existing = { ...(nextAll[wk] || {}) };
+      for (const k of keysToDelete) delete existing[k];
+      nextAll[wk] = existing;
+      await persist(sl.source, wk, existing);
+    }
+    setBookingsFor(sl.source)(nextAll);
+    setSelectedSlot(null);
+    onToast("Booking rejected and slot released");
+  };
+
+  const handleDelete = async (mode) => {
+    const sl = selectedSlot;
+    if (!sl) return;
+    const key = slotKey(sl.day, sl.period.id);
+    const bk = getBk(sl);
+    const bks = bookingsFor(sl.source);
+    const nextAll = { ...bks };
+    const keysToDelete = [key];
+    if (bk?.doublePartnerKey) keysToDelete.push(bk.doublePartnerKey);
+
+    if (mode === "all") {
+      if (bk?.recurId) {
+        for (const [wkk, slots] of Object.entries(nextAll)) {
+          const updated = { ...slots };
+          let changed = false;
+          for (const k of keysToDelete) { if (slots[k]?.recurId === bk.recurId) { delete updated[k]; changed = true; } }
+          if (changed) { nextAll[wkk] = updated; await persist(sl.source, wkk, updated); }
+        }
+      } else if (bk?.recurring && bk?.recurWeeks > 1) {
+        for (let i = 0; i < bk.recurWeeks; i++) {
+          const wkDate = addWeeks(getMondayOfWeek(new Date(wk)), i);
+          const wkk = weekKey(wkDate);
+          const wkSlots = { ...(await dbLoad(keyFnFor(sl.source)(lab, wkk))) };
+          for (const k of keysToDelete) delete wkSlots[k];
+          nextAll[wkk] = wkSlots;
+          await persist(sl.source, wkk, wkSlots);
+        }
+      }
+    } else {
+      const existing = { ...(nextAll[wk] || {}) };
+      for (const k of keysToDelete) delete existing[k];
+      nextAll[wk] = existing;
+      await persist(sl.source, wk, existing);
+    }
+    setBookingsFor(sl.source)(nextAll);
+    setSelectedSlot(null);
+    onToast("Booking removed");
+  };
+
+  const handleCheckRecurConflicts = async ({ targetDay, targetPeriodId, targetWeekOffset }) => {
+    const sl = selectedSlot;
+    if (!sl) return 0;
+    const srcKey = slotKey(sl.day, sl.period.id);
+    const bk = getBk(sl);
+    if (!bk?.recurId) return 0;
+    const bks = bookingsFor(sl.source);
+    const _periods = periodsFor(sl.source);
+    const isDoubleFirst = !bk.isDoubleSecond && !!bk.doubleId;
+    const targetKey = slotKey(targetDay, targetPeriodId);
+    const targetNextPeriod = isDoubleFirst ? getNextLessonPeriod(targetPeriodId, _periods) : null;
+    const targetDoubleKey = targetNextPeriod ? slotKey(targetDay, targetNextPeriod.id) : null;
+    const weeksToCheck = new Set(Object.keys(bks));
+    for (let offset = -3; offset <= 3; offset++) weeksToCheck.add(weekKey(addWeeks(monday, offset)));
+    let conflictCount = 0;
+    for (const wkk of weeksToCheck) {
+      const slots = bks[wkk] || (await dbLoad(keyFnFor(sl.source)(lab, wkk)));
+      if (!slots) continue;
+      const slotBk = slots[srcKey];
+      if (!slotBk || slotBk.recurId !== bk.recurId) continue;
+      const t1 = slots[targetKey], t2 = targetDoubleKey ? slots[targetDoubleKey] : null;
+      if ((t1 && t1.recurId !== bk.recurId) || (t2 && t2.recurId !== bk.recurId)) conflictCount++;
+    }
+    return conflictCount;
+  };
+
+  const handleAdminMove = async ({ targetDay, targetPeriodId, targetWeekOffset, recurMode, approve }) => {
+    const sl = selectedSlot;
+    if (!sl) return;
+    const srcKey = slotKey(sl.day, sl.period.id);
+    const bk = getBk(sl);
+    if (!bk) return;
+    const bks = bookingsFor(sl.source);
+    const _periods = periodsFor(sl.source);
+    const targetMondayDate = addWeeks(monday, targetWeekOffset);
+    const targetWk = weekKey(targetMondayDate);
+    const targetPeriod = _periods.find(p => p.id === targetPeriodId);
+    if (!targetPeriod) return;
+    const targetKey = slotKey(targetDay, targetPeriodId);
+    const isDoubleFirst = !bk.isDoubleSecond && !!bk.doubleId;
+    const srcDoubleKey = isDoubleFirst ? bk.doublePartnerKey : null;
+    const partnerBk = srcDoubleKey ? bks[wk]?.[srcDoubleKey] : null;
+    const targetNextPeriod = isDoubleFirst ? getNextLessonPeriod(targetPeriodId, _periods) : null;
+    const targetDoubleKey = targetNextPeriod ? slotKey(targetDay, targetNextPeriod.id) : null;
+
+    const buildMoved = (srcBk, isSecond = false) => {
+      const tgtP = isSecond ? targetNextPeriod : targetPeriod;
+      const { recurring, recurWeeks, pendingKey, ...rest } = srcBk;
+      return {
+        ...rest, day: targetDay, periodLabel: tgtP.label, periodTime: tgtP.time,
+        status: approve ? "confirmed" : srcBk.status,
+        ...(isDoubleFirst && !isSecond ? { doublePartnerKey: targetDoubleKey, doublePeriodLabel: targetNextPeriod?.label, doublePeriodTime: targetNextPeriod?.time } : {}),
+        ...(isSecond ? { isDoubleSecond: true, doublePartnerKey: targetKey } : {}),
+      };
+    };
+
+    const nextAll = { ...bks };
+
+    if (recurMode === "all" && bk.recurId) {
+      const weeksToCheck = new Set(Object.keys(nextAll));
+      for (let offset = -3; offset <= 3; offset++) weeksToCheck.add(weekKey(addWeeks(monday, offset)));
+      for (const wkk of weeksToCheck) {
+        const slots = nextAll[wkk] || (await dbLoad(keyFnFor(sl.source)(lab, wkk)));
+        if (!slots) continue;
+        const slotBk = slots[srcKey];
+        if (!slotBk || slotBk.recurId !== bk.recurId) continue;
+        const t1 = slots[targetKey], t2 = targetDoubleKey ? slots[targetDoubleKey] : null;
+        if ((t1 && t1.recurId !== bk.recurId) || (t2 && t2.recurId !== bk.recurId)) continue;
+        const slotPartner = srcDoubleKey ? slots[srcDoubleKey] : null;
+        const updated = { ...slots };
+        delete updated[srcKey];
+        if (srcDoubleKey) delete updated[srcDoubleKey];
+        updated[targetKey] = buildMoved({ ...slotBk });
+        if (isDoubleFirst && targetDoubleKey && targetNextPeriod && slotPartner)
+          updated[targetDoubleKey] = buildMoved({ ...slotPartner }, true);
+        nextAll[wkk] = updated;
+        await persist(sl.source, wkk, updated);
+      }
+    } else {
+      const srcSlots = { ...(nextAll[wk] || {}) };
+      delete srcSlots[srcKey];
+      if (srcDoubleKey) delete srcSlots[srcDoubleKey];
+      nextAll[wk] = srcSlots;
+      await persist(sl.source, wk, srcSlots);
+      const tgtSlots = { ...(nextAll[targetWk] || (await dbLoad(keyFnFor(sl.source)(lab, targetWk)))) };
+      tgtSlots[targetKey] = buildMoved({ ...bk });
+      if (isDoubleFirst && targetDoubleKey && targetNextPeriod && partnerBk)
+        tgtSlots[targetDoubleKey] = buildMoved({ ...partnerBk }, true);
+      nextAll[targetWk] = tgtSlots;
+      await persist(sl.source, targetWk, tgtSlots);
+    }
+
+    setBookingsFor(sl.source)(nextAll);
+    setSelectedSlot(null);
+    onToast(approve ? "Booking approved & moved ✓" : "Booking moved ✓");
+  };
+
+  const currentBk = getBk(selectedSlot);
+  const currentPeriods = selectedSlot ? periodsFor(selectedSlot.source) : PERIODS;
+  const slotColor = selectedSlot?.source === "primary" ? "#ec4899" : "#3b82f6";
+
   return (
     <div className="overview-wrap">
-      {/* Day header row */}
       <div className="overview-header">
         <div className="overview-axis-spacer" />
         {DAYS.map((d) => <div key={d} className="overview-day-header">{d}</div>)}
       </div>
 
-      {/* Main time grid */}
       <div className="overview-main">
-        {/* Time axis */}
+        {/* Axis: time labels + secondary period labels */}
         <div className="overview-axis">
           {timeLabels.map((min) => (
             <div key={min} className="overview-time-label" style={{ top: `${toTopPct(min)}%` }}>
               {String(Math.floor(min / 60)).padStart(2, "0")}:{String(min % 60).padStart(2, "0")}
             </div>
           ))}
+          {periodMarkers.map((pm, i) => (
+            <div key={i} className="overview-period-label" style={{ top: `${toTopPct(pm.start)}%` }}>
+              {pm.label}
+            </div>
+          ))}
         </div>
 
-        {/* Day columns */}
         {DAYS.map((day) => {
           const blocks = buildBlocks(day);
           return (
             <div key={day} className="overview-day-col">
-              {/* Horizontal gridlines */}
               {timeLabels.map((min) => (
                 <div key={min} className={`overview-gridline${min % 60 === 0 ? " hour" : ""}`}
                   style={{ top: `${toTopPct(min)}%` }} />
               ))}
-              {/* Booking blocks */}
+              {periodMarkers.map((pm, i) => (
+                <div key={i} className="overview-period-band"
+                  style={{ top: `${toTopPct(pm.start)}%`, height: `${toHeightPct(pm.start, pm.end)}%` }} />
+              ))}
               {blocks.map((block, i) => {
                 const heightPct = toHeightPct(block.start, block.end);
-                const tinyBlock = heightPct < 5; // < ~27px — hide detail text
+                const tinyBlock = heightPct < 5;
                 return (
                   <div key={i}
                     className={`overview-block${block.bk.status === "pending" ? " pending" : ""}`}
                     style={{
-                      top:    `${toTopPct(block.start)}%`,
+                      top: `${toTopPct(block.start)}%`,
                       height: `${Math.max(heightPct, 2)}%`,
                       background: block.color + "22",
                       borderColor: block.color + "88",
                       borderLeftColor: block.color,
                       borderLeftWidth: "3px",
                     }}
-                    onClick={() => setPopup({ ...block, day })}
+                    onClick={() => setSelectedSlot({ source: block.source, day, period: block.period })}
                   >
                     {!tinyBlock && <>
                       <div className="overview-block-teacher">{block.bk.teacher}</div>
                       <div className="overview-block-class">{block.bk.class}</div>
                       <div className="overview-block-source" style={{ color: block.color }}>
-                        {block.source}
-                        {block.bk.status === "pending" ? " · pending" : ""}
+                        {block.source}{block.bk.status === "pending" ? " · pending" : ""}
                       </div>
                     </>}
-                    {tinyBlock && (
-                      <div className="overview-block-teacher" style={{ fontSize: "0.58rem" }}>{block.bk.teacher}</div>
-                    )}
+                    {tinyBlock && <div className="overview-block-teacher" style={{ fontSize: "0.58rem" }}>{block.bk.teacher}</div>}
                   </div>
                 );
               })}
@@ -2165,7 +2394,6 @@ function WeekOverview({ monday, inLabBookings, primaryBookings }) {
         })}
       </div>
 
-      {/* Legend */}
       <div className="overview-legend">
         <div className="overview-legend-item">
           <div className="overview-legend-dot" style={{ background: "#3b82f6" }} />
@@ -2176,56 +2404,34 @@ function WeekOverview({ monday, inLabBookings, primaryBookings }) {
           Primary Lab Booking
         </div>
         <div className="overview-legend-item" style={{ marginLeft: "auto", fontFamily: "DM Mono, monospace", fontSize: "0.7rem" }}>
-          Click any block to view details
+          Click any block to manage
         </div>
       </div>
 
-      {/* Read-only detail popup */}
-      {popup && (
-        <div className="modal-overlay" onClick={() => setPopup(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <div className="modal-title">
-                  {popup.day} — {popup.period.label}
-                </div>
-                <div className="modal-sub" style={{ color: popup.color }}>
-                  {popup.source === "primary" ? "Primary Lab Booking" : "Secondary Lab Booking"}
-                  {" · "}{popup.period.time}
-                </div>
-              </div>
-              <button className="modal-close" onClick={() => setPopup(null)}>×</button>
-            </div>
-            <div className="modal-body">
-              <div className="pending-info-box">
-                {popup.bk.status === "pending" && (
-                  <div className="pending-status-badge">⏳ Pending approval</div>
-                )}
-                {[
-                  ["Teacher",   popup.bk.teacher],
-                  ["Class",     popup.bk.class],
-                  ["Subject",   popup.bk.subject],
-                  ["Period",    popup.bk.periodLabel ? `${popup.bk.periodLabel} (${popup.bk.periodTime || ""})` : null],
-                  ["Activity",  popup.bk.activityOverview],
-                  ["Equipment", popup.bk.requiredEquipment],
-                  ["Students",  popup.bk.numStudents
-                    ? `${popup.bk.numStudents}${popup.bk.numGroups ? ` (${popup.bk.numGroups} groups)` : ""}`
-                    : null],
-                  ["Recurring", popup.bk.recurring ? `Yes — ${popup.bk.recurWeeks} weeks` : null],
-                  ["Colour",    popup.bk.color ? null : null], // omit colour row
-                ].filter(([, v]) => v).map(([label, value]) => (
-                  <div key={label} className="pending-info-row">
-                    <span className="pending-info-label">{label}</span>
-                    <span className="pending-info-value">{value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn-cancel" onClick={() => setPopup(null)}>Close</button>
-            </div>
-          </div>
-        </div>
+      {selectedSlot && currentBk && (
+        <SlotModal
+          accentColor={slotColor}
+          day={selectedSlot.day}
+          period={selectedSlot.period}
+          booking={currentBk}
+          onSave={handleSave}
+          onAdminSave={handleSave}
+          onClosure={() => {}}
+          onClose={() => setSelectedSlot(null)}
+          onDelete={handleDelete}
+          onAdminApprove={handleAdminApprove}
+          onAdminReject={handleAdminReject}
+          onAdminMove={handleAdminMove}
+          onCheckRecurConflicts={handleCheckRecurConflicts}
+          isPrimary={selectedSlot.source === "primary"}
+          isAdmin={true}
+          weekBookings={bookingsFor(selectedSlot.source)[wk] || {}}
+          allBookings={bookingsFor(selectedSlot.source)}
+          allCrossTabBookings={selectedSlot.source === "primary" ? inLabBookings : primaryBookings}
+          crossTabPeriodMapForMove={selectedSlot.source === "primary" ? PRIMARY_TO_SECONDARY : SECONDARY_TO_PRIMARY}
+          monday={monday}
+          periods={currentPeriods}
+        />
       )}
     </div>
   );
@@ -2348,7 +2554,8 @@ function LabView({ lab, onBack, isAdmin, onAdminLogin, onAdminLogout, theme, onT
           periods={PRIMARY_PERIODS}
         />
       ) : tab === "overview" ? (
-        <WeekOverview monday={monday} inLabBookings={inLabBookings} primaryBookings={primaryBookings} />
+        <WeekOverview monday={monday} inLabBookings={inLabBookings} primaryBookings={primaryBookings}
+          setInLab={setInLab} setPrimary={setPrimary} lab={lab} onSaveState={setSaveState} onToast={showToast} />
       ) : null}
 
       {showAdminLogin && (
