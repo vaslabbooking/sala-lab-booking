@@ -768,7 +768,7 @@ function ChangePasswordPanel({ adminPassword, onToast }) {
 
 // ─── Booking Modal ────────────────────────────────────────────────────────────
 
-function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onAdminEditSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, onAdminMove, onCheckRecurConflicts, isPrimary, isAdmin, weekBookings, allBookings, monday, allCrossTabBookings, crossTabPeriodMapForMove, periods = PERIODS }) {
+function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onAdminEditSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, onAdminMove, onCheckRecurConflicts, isPrimary, isAdmin, weekBookings, allBookings, monday, allCrossTabBookings, crossTabPeriodMapForMove, periods = PERIODS, lab }) {
   const isNew       = !booking?.teacher && booking?.status !== "closed";
   const isPending   = booking?.status === "pending";
   const isConfirmed = booking?.status === "confirmed";
@@ -792,6 +792,7 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onA
   const [closureReason, setClosureReason]   = useState("");
   const [closureThrough, setClosureThrough] = useState("");
   const [editMode, setEditMode] = useState(false);
+  const [pendingSubmit, setPendingSubmit] = useState(null);
 
   // ── Move mode state ──────────────────────────────────────────────────────────
   const [moveMode, setMoveMode]             = useState(false);
@@ -924,6 +925,34 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onA
   const canSave = form.teacher.trim() && form.email.trim() && form.class.trim() && form.subject.trim()
     && form.activityOverview.trim()
     && !(doubleMode && nextAlreadyBooked);
+
+  // Teacher safety confirmation (shown when teacher clicks Submit)
+  if (pendingSubmit) {
+    const dtUrl = "https://xcleducation.sharepoint.com/:u:/r/sites/SalaDTRoom/SitePages/Safety%20Requirement%20in%20DT%20Lab.aspx?csf=1&web=1&e=PXePDR";
+    return (
+      <div className="modal-overlay" onClick={() => setPendingSubmit(null)}>
+        <div className="modal" style={{ "--accent": accentColor, maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <div className="modal-title">Confirm Booking</div>
+            <button className="modal-close" onClick={() => setPendingSubmit(null)}>×</button>
+          </div>
+          <div className="modal-body" style={{ padding: "20px 24px", fontSize: "0.88rem", color: "var(--text2)", lineHeight: 1.8 }}>
+            <p>
+              By making this booking I confirm that am aware of the safety rules of the lab and up-to-date with any required training.
+              {" "}Contact the lab technician{lab === "dt" ? <>{" "}or click <a href={dtUrl} target="_blank" rel="noreferrer" style={{ color: accentColor }}>HERE</a></> : null} if unsure.
+            </p>
+          </div>
+          <div className="modal-footer">
+            <button className="btn-cancel" onClick={() => setPendingSubmit(null)}>Go Back</button>
+            <button className="btn-save" style={{ background: accentColor }}
+              onClick={() => { onSave(pendingSubmit); setPendingSubmit(null); }}>
+              Confirm
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Closed slot view
   if (isClosed) {
@@ -1326,7 +1355,9 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onA
             <button className="btn-save" style={{ background: form.color }} disabled={!canSave}
               onClick={() => {
                 const f = { ...form, double: doubleMode };
-                isAdmin && isNew ? onAdminSave(f) : onSave(f);
+                if (isAdmin && isNew) { onAdminSave(f); }
+                else if (isNew && !isAdmin) { setPendingSubmit(f); }
+                else { onSave(f); }
               }}>
               {isNew ? (isAdmin ? "Save Booking" : "Submit for Approval") : "Save Changes"}
             </button>
@@ -2070,6 +2101,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
           isAdmin={isAdmin}
           weekBookings={bookings[wk] || {}}
           periods={periods}
+          lab={lab}
         />
       )}
       {crossTabWarning && (
