@@ -2083,8 +2083,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
               <div className="conflict-warning">
                 <span className="conflict-warning-icon">⚠</span>
                 <span>
-                  Secondary <strong>{crossTabWarning.secPeriodId === "p5" ? "Period 5" : "Period 7"}</strong> already has a booking on <strong>{crossTabWarning.day}</strong>.
-                  Booking primary <strong>{crossTabWarning.period.label.toLowerCase()}</strong> on this day will show a conflict indicator on that secondary slot.
+                  Secondary {crossTabWarning.secPeriodId === "p5" ? "Period 5" : "Period 7"} already has a booking on {crossTabWarning.day}.
                 </span>
               </div>
             </div>
