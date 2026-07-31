@@ -3010,7 +3010,7 @@ export default function App() {
         <div className="home">
           <div className="home-title">
             <h1>SALA Lab Booking</h1>
-            <p>VAS Secondary · Select a lab to view schedule</p>
+            <p>Select a lab to view schedule</p>
           </div>
           <div className="lab-cards">
             {Object.values(LABS).map((lab) => (
