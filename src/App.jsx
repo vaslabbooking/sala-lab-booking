@@ -131,7 +131,8 @@ const PRIMARY_UNAVAILABLE = new Set(["pp1", "pp5", "pp7"]);
 // Which primary period maps to which secondary period (and vice versa)
 // pp8 is omitted — it hits secondary afternoon break, no interplay needed
 const PRIMARY_TO_SECONDARY = { pp2: "p2", pp3: "p3", pp4: "p4", pp6: "p6", pp9: "p8", pp10: "p9" };
-const SECONDARY_TO_PRIMARY = { p2: "pp2", p3: "pp3", p4: "pp4", p6: "pp6", p8: "pp9",  p9: "pp10" };
+// p5 blocked when primary lunch is booked; p7 blocked when primary afternoon break is booked
+const SECONDARY_TO_PRIMARY = { p2: "pp2", p3: "pp3", p4: "pp4", p5: "plunch", p6: "pp6", p7: "pbreak2", p8: "pp9", p9: "pp10" };
 
 const LABS = {
   dt: { id: "dt", name: "DT Lab",  icon: "⚙️", color: "#e67e22", techEmail: "linh.thi.pham@vas.edu.vn",  techName: "Linh" },
@@ -1351,6 +1352,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
   const [selectMode, setSelectMode]   = useState(false);
   const [selectedSlots, setSelectedSlots] = useState(new Set());
   const [restrictionMsg, setRestrictionMsg] = useState(null);
+  const [crossTabWarning, setCrossTabWarning] = useState(null); // { day, period, secPeriodId }
   const wk = weekKey(monday);
 
   const checkDateRestriction = (day) => {
@@ -1943,6 +1945,17 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
                             if (selectMode && bk) { toggleSlotSelection(day, period.id); return; }
                             const r = checkDateRestriction(day);
                             if (r) { setRestrictionMsg(r); return; }
+                            // Warn if primary lunch/break2 would block an occupied secondary slot
+                            if (isPrimary && !bk) {
+                              const secPeriodId = period.id === "plunch" ? "p5" : period.id === "pbreak2" ? "p7" : null;
+                              if (secPeriodId) {
+                                const secBk = crossTabBookings?.[wk]?.[slotKey(day, secPeriodId)];
+                                if (secBk && secBk.status !== "closed") {
+                                  setCrossTabWarning({ day, period, secPeriodId });
+                                  return;
+                                }
+                              }
+                            }
                             setModal({ day, period });
                           }}
                         >
@@ -2058,6 +2071,32 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
           weekBookings={bookings[wk] || {}}
           periods={periods}
         />
+      )}
+      {crossTabWarning && (
+        <div className="modal-overlay" onClick={() => setCrossTabWarning(null)}>
+          <div className="modal" style={{ "--accent": "#f59e0b", maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">Secondary Slot Already Booked</div>
+              <button className="modal-close" onClick={() => setCrossTabWarning(null)}>×</button>
+            </div>
+            <div className="modal-body" style={{ padding: "20px 24px" }}>
+              <div className="conflict-warning">
+                <span className="conflict-warning-icon">⚠</span>
+                <span>
+                  Secondary <strong>{crossTabWarning.secPeriodId === "p5" ? "Period 5" : "Period 7"}</strong> already has a booking on <strong>{crossTabWarning.day}</strong>.
+                  Booking primary <strong>{crossTabWarning.period.label.toLowerCase()}</strong> on this day will show a conflict indicator on that secondary slot.
+                </span>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-cancel" onClick={() => setCrossTabWarning(null)}>Cancel</button>
+              <button className="btn-save" style={{ background: "#f59e0b" }}
+                onClick={() => { setModal({ day: crossTabWarning.day, period: crossTabWarning.period }); setCrossTabWarning(null); }}>
+                Proceed Anyway
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {restrictionMsg && (
         <div className="modal-overlay" onClick={() => setRestrictionMsg(null)}>
@@ -2514,9 +2553,11 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
 
   // Map each secondary period to the corresponding primary period id (if any)
   const SEC_TO_PRI_OVERVIEW = {
-    p2: "pp2", p3: "pp3", p4: "pp4", p6: "pp6", p8: "pp9", p9: "pp10",
-    break2: "pp8", // primary period 8 falls during the secondary afternoon break
-    lunch: "plunch", // primary lunch overlaps secondary lunch
+    p2: "pp2", p3: "pp3", p4: "pp4",
+    p5: "plunch",    // primary lunch overlaps end of secondary period 5
+    p6: "pp6", p7: "pbreak2", // primary afternoon break overlaps end of secondary period 7
+    p8: "pp9", p9: "pp10",
+    break2: "pp8",   // primary period 8 falls during the secondary afternoon break
   };
 
   // Row heights matching CSS: lesson=72, break=30, lunch=40
