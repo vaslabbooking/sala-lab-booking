@@ -767,7 +767,7 @@ function ChangePasswordPanel({ adminPassword, onToast }) {
 
 // ─── Booking Modal ────────────────────────────────────────────────────────────
 
-function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, onAdminMove, onCheckRecurConflicts, isPrimary, isAdmin, weekBookings, allBookings, monday, allCrossTabBookings, crossTabPeriodMapForMove, periods = PERIODS }) {
+function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onAdminEditSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, onAdminMove, onCheckRecurConflicts, isPrimary, isAdmin, weekBookings, allBookings, monday, allCrossTabBookings, crossTabPeriodMapForMove, periods = PERIODS }) {
   const isNew       = !booking?.teacher && booking?.status !== "closed";
   const isPending   = booking?.status === "pending";
   const isConfirmed = booking?.status === "confirmed";
@@ -790,6 +790,7 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onC
   const [closureMode, setClosureMode] = useState(false);
   const [closureReason, setClosureReason]   = useState("");
   const [closureThrough, setClosureThrough] = useState("");
+  const [editMode, setEditMode] = useState(false);
 
   // ── Move mode state ──────────────────────────────────────────────────────────
   const [moveMode, setMoveMode]             = useState(false);
@@ -1016,7 +1017,52 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onC
             <button className="modal-close" onClick={onClose}>×</button>
           </div>
           <div className="modal-body">
-            {moveMode ? movePanelContent : (
+            {moveMode ? movePanelContent : editMode ? (
+              <>
+                <div className="row-2">
+                  <div className="field-group">
+                    <label className="field-label">Teacher Name <span className="required">*</span></label>
+                    <input className="field-input" value={form.teacher} onChange={upd("teacher")} placeholder="e.g. Ms. Nguyen" />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Email <span className="required">*</span></label>
+                    <input className="field-input" type="email" value={form.email} onChange={upd("email")} placeholder="e.g. teacher@vas.edu.vn" />
+                  </div>
+                </div>
+                <div className="row-2">
+                  <div className="field-group">
+                    <label className="field-label">Class <span className="required">*</span></label>
+                    <input className="field-input" value={form.class} onChange={upd("class")} placeholder="e.g. 8A" />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Subject <span className="required">*</span></label>
+                    <input className="field-input" value={form.subject} onChange={upd("subject")} placeholder="e.g. Computing" />
+                  </div>
+                </div>
+                <ColorPicker value={form.color} onChange={(hex) => setForm((f) => ({ ...f, color: hex }))} />
+                <div className="field-group">
+                  <label className="field-label">Activity Overview <span className="required">*</span></label>
+                  <textarea className="field-textarea" value={form.activityOverview} onChange={upd("activityOverview")}
+                    placeholder="Brief description of what the class will be doing…" />
+                </div>
+                <div className="divider">Optional Details</div>
+                <div className="field-group">
+                  <label className="field-label">Required Equipment</label>
+                  <textarea className="field-textarea" value={form.requiredEquipment} onChange={upd("requiredEquipment")}
+                    placeholder="List any equipment or resources needed…" style={{ minHeight: 56 }} />
+                </div>
+                <div className="row-2">
+                  <div className="field-group">
+                    <label className="field-label">No. of Students</label>
+                    <input className="field-input" type="number" min="1" value={form.numStudents} onChange={upd("numStudents")} placeholder="e.g. 24" />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">No. of Groups</label>
+                    <input className="field-input" type="number" min="1" value={form.numGroups} onChange={upd("numGroups")} placeholder="e.g. 6" />
+                  </div>
+                </div>
+              </>
+            ) : (
               <>
                 <div className="pending-status-badge">⏳ Awaiting approval</div>
                 <div className="pending-info-box">
@@ -1040,6 +1086,7 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onC
                   <button className="btn-approve" onClick={() => onAdminApprove(approvalColor)}>✓ Approve Booking</button>
                   <button className="btn-reject-action" onClick={onAdminReject}>✕ Reject</button>
                   <button className="btn-move-toggle" onClick={() => setMoveMode(true)}>📦 Approve & Move…</button>
+                  <button className="btn-move-toggle" onClick={() => setEditMode(true)}>✏ Edit</button>
                 </div>
               </>
             )}
@@ -1053,6 +1100,14 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onC
                     Approve &amp; Move
                   </button>
                 )}
+              </>
+            ) : editMode ? (
+              <>
+                <button className="btn-cancel" onClick={() => setEditMode(false)}>← Back</button>
+                <button className="btn-save" style={{ background: form.color }} disabled={!canSave}
+                  onClick={() => { onAdminEditSave?.(form); setEditMode(false); }}>
+                  Update Details
+                </button>
               </>
             ) : (
               <button className="btn-cancel" onClick={onClose}>Close</button>
@@ -1522,6 +1577,23 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
     onToast("Booking approved ✓");
   };
 
+  // Admin: save edited details on a pending booking (keep status as pending)
+  const handleAdminEditSave = async (form) => {
+    const { day, period } = modal;
+    const key = slotKey(day, period.id);
+    const bk = getBooking(day, period.id);
+    const { double: _d, recurring: _r, recurWeeks: _rw, ...rest } = form;
+    const existing = { ...(bookings[wk] || {}) };
+    existing[key] = { ...bk, ...rest };
+    if (bk?.doublePartnerKey && existing[bk.doublePartnerKey]) {
+      existing[bk.doublePartnerKey] = { ...existing[bk.doublePartnerKey], ...rest };
+    }
+    const nextAll = { ...bookings, [wk]: existing };
+    setBookings(nextAll);
+    await persist(wk, existing);
+    onToast("Booking details updated ✓");
+  };
+
   // Admin: reject pending booking
   const handleAdminReject = async () => {
     const { day, period } = modal;
@@ -1864,8 +1936,8 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
                     <td key={day} className={`slot-cell${isMerged ? " has-merged" : ""}`} rowSpan={rowspan > 1 ? rowspan : undefined}>
                       {period.type === "break" ? (
                         <div
-                          className={`break-slot${bk ? (isClosed ? " closed" : isPending ? " pending" : " booked") : ""}${isMerged ? " merged" : ""}${isSelected ? " selected" : ""}${isAdmin ? " admin-break" : ""}`}
-                          style={bk && !isPending && !isClosed ? { borderColor: color, background: color + "22" } : {}}
+                          className={`break-slot${bk && (isAdmin || isClosed) ? (isClosed ? " closed" : isPending ? " pending" : " booked") : ""}${isMerged ? " merged" : ""}${isSelected ? " selected" : ""}${isAdmin ? " admin-break" : ""}`}
+                          style={bk && isAdmin && !isPending && !isClosed ? { borderColor: color, background: color + "22" } : {}}
                           onClick={() => {
                             if (!isAdmin) return;
                             if (selectMode && bk) { toggleSlotSelection(day, period.id); return; }
@@ -1874,7 +1946,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
                             setModal({ day, period });
                           }}
                         >
-                          {bk ? (
+                          {bk && (isAdmin || isClosed) ? (
                             isClosed ? (
                               <span style={{ fontSize: "0.65rem", color: "var(--closed-text)", fontFamily: "DM Mono, monospace" }}>🚫 {bk.reason}</span>
                             ) : isPending ? (
@@ -1975,6 +2047,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
           crossTabPeriodMapForMove={periodMap}
           onSave={handleSave}
           onAdminSave={handleAdminDirectSave}
+          onAdminEditSave={handleAdminEditSave}
           onClosure={handleClosure}
           onClose={() => setModal(null)}
           onDelete={handleDelete}
@@ -2237,6 +2310,23 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
     onToast("Booking rejected and slot released");
   };
 
+  const handleAdminEditSave = async (form) => {
+    const sl = selectedSlot;
+    if (!sl) return;
+    const key = slotKey(sl.day, sl.period.id);
+    const bk = getBk(sl);
+    const bks = bookingsFor(sl.source);
+    const { double: _d, recurring: _r, recurWeeks: _rw, ...rest } = form;
+    const existing = { ...(bks[wk] || {}), [key]: { ...bk, ...rest } };
+    if (bk?.doublePartnerKey && existing[bk.doublePartnerKey]) {
+      existing[bk.doublePartnerKey] = { ...existing[bk.doublePartnerKey], ...rest };
+    }
+    setBookingsFor(sl.source)({ ...bks, [wk]: existing });
+    await persist(sl.source, wk, existing);
+    // Don't close selectedSlot — stay on confirmation view
+    onToast("Booking details updated ✓");
+  };
+
   const handleDelete = async (mode) => {
     const sl = selectedSlot;
     if (!sl) return;
@@ -2426,6 +2516,7 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
   const SEC_TO_PRI_OVERVIEW = {
     p2: "pp2", p3: "pp3", p4: "pp4", p6: "pp6", p8: "pp9", p9: "pp10",
     break2: "pp8", // primary period 8 falls during the secondary afternoon break
+    lunch: "plunch", // primary lunch overlaps secondary lunch
   };
 
   // Row heights matching CSS: lesson=72, break=30, lunch=40
@@ -2522,12 +2613,17 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
                 {priPeriod && <div className="overview-period-time" style={{ color: "#ec4899" }}>↕ {priPeriod.label} {priPeriod.time}</div>}
               </div>
               {DAYS.map((day) => {
-                const secBk = !isBreak
-                  ? (inLabBookings[wk]?.[slotKey(day, period.id)] || null)
-                  : null;
-                const priBk = priPeriodId
+                const rawSecBk = inLabBookings[wk]?.[slotKey(day, period.id)] || null;
+                // For break rows, show non-closed bookings (admin-placed); for lesson rows, show all
+                const secBk = isBreak
+                  ? (rawSecBk?.status === "closed" ? null : rawSecBk)
+                  : rawSecBk;
+                const rawPriBk = priPeriodId
                   ? (primaryBookings[wk]?.[slotKey(day, priPeriodId)] || null)
                   : null;
+                const priBk = isBreak
+                  ? (rawPriBk?.status === "closed" ? null : rawPriBk)
+                  : rawPriBk;
 
                 const secIsSpanned = spannedSec.has(`${day}_${ri}`);
                 const priIsSpanned = spannedPri.has(`${day}_${ri}`);
@@ -2621,6 +2717,7 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
           booking={currentBk}
           onSave={handleSave}
           onAdminSave={handleSave}
+          onAdminEditSave={handleAdminEditSave}
           onClosure={() => {}}
           onClose={() => setSelectedSlot(null)}
           onDelete={handleDelete}
