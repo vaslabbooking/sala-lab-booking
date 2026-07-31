@@ -938,7 +938,7 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onA
           </div>
           <div className="modal-body" style={{ padding: "20px 24px", fontSize: "0.88rem", color: "var(--text2)", lineHeight: 1.8 }}>
             <p>
-              By making this booking I confirm that am aware of the safety rules of the lab and up-to-date with any required training.
+              By making this booking I confirm that I am aware of the safety rules of the lab and up-to-date with any required training.
               {" "}Contact the lab technician{lab === "dt" ? <>{" "}or click <a href={dtUrl} target="_blank" rel="noreferrer" style={{ color: accentColor }}>HERE</a></> : null} if unsure.
             </p>
           </div>
@@ -1393,9 +1393,14 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
     slotDate.setDate(slotDate.getDate() + dayOffset);
     slotDate.setHours(0, 0, 0, 0);
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+    // Next school day: skip Saturday (+2) and Sunday (+1) to land on Monday
+    const nextSchoolDay = new Date(today);
+    nextSchoolDay.setDate(nextSchoolDay.getDate() + 1);
+    const dow = nextSchoolDay.getDay();
+    if (dow === 6) nextSchoolDay.setDate(nextSchoolDay.getDate() + 2);
+    else if (dow === 0) nextSchoolDay.setDate(nextSchoolDay.getDate() + 1);
     if (slotDate < today) return "past";
-    if (slotDate <= tomorrow) return "soon";
+    if (slotDate <= nextSchoolDay) return "soon";
     return null;
   };
 
@@ -2178,7 +2183,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
               ) : (
                 <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                   <span style={{ fontSize: "3rem", lineHeight: 1, flexShrink: 0 }}>⏰</span>
-                  <span>It is not permitted to book slots using this system within the same or next day. Please contact the lab technician to do so.</span>
+                  <span>It is not permitted to book slots using this system within the same or next school day. Please contact the lab technician to do so.</span>
                 </div>
               )}
             </div>
