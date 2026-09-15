@@ -768,7 +768,7 @@ function ChangePasswordPanel({ adminPassword, onToast }) {
 
 // ─── Booking Modal ────────────────────────────────────────────────────────────
 
-function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onAdminEditSave, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, onAdminMove, onCheckRecurConflicts, isPrimary, isAdmin, weekBookings, allBookings, monday, allCrossTabBookings, crossTabPeriodMapForMove, periods = PERIODS, lab }) {
+function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onAdminEditSave, onAdminExtend, onClosure, onClose, onDelete, onAdminApprove, onAdminReject, onAdminMove, onCheckRecurConflicts, isPrimary, isAdmin, weekBookings, allBookings, monday, allCrossTabBookings, crossTabPeriodMapForMove, periods = PERIODS, lab }) {
   const isNew       = !booking?.teacher && booking?.status !== "closed";
   const isPending   = booking?.status === "pending";
   const isConfirmed = booking?.status === "confirmed";
@@ -793,6 +793,8 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onA
   const [closureThrough, setClosureThrough] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState(null);
+  const [extendMode, setExtendMode] = useState(false);
+  const [extendWeeks, setExtendWeeks] = useState(1);
 
   // ── Move mode state ──────────────────────────────────────────────────────────
   const [moveMode, setMoveMode]             = useState(false);
@@ -1169,7 +1171,18 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onA
         </div>
 
         <div className="modal-body">
-          {!isNew && isAdmin && moveMode ? movePanelContent : (<>
+          {!isNew && isAdmin && extendMode ? (
+            <div style={{ padding: "8px 0" }}>
+              <p style={{ fontSize: "0.88rem", color: "var(--text2)", marginBottom: 16, lineHeight: 1.6 }}>
+                Add more weeks to this booking, starting from the week after the last existing occurrence. All details are copied automatically.
+              </p>
+              <div className="field-group">
+                <label className="field-label">Additional weeks</label>
+                <input className="field-input" type="number" min="1" max="52" value={extendWeeks}
+                  onChange={(e) => setExtendWeeks(Math.max(1, parseInt(e.target.value) || 1))} />
+              </div>
+            </div>
+          ) : !isNew && isAdmin && moveMode ? movePanelContent : (<>
           {isNew && isPrimary && (period.id === "pp8" || period.id === "pp10") && (
             <div style={{ fontSize: "0.8rem", color: "#92400e", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "10px 14px", lineHeight: 1.5 }}>
               <strong>NOTE:</strong> {period.id === "pp8"
@@ -1321,7 +1334,16 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onA
         </div>
 
         <div className="modal-footer">
-          {!isNew && isAdmin && moveMode ? (
+          {!isNew && isAdmin && extendMode ? (
+            <>
+              <button className="btn-cancel" onClick={() => setExtendMode(false)}>← Back</button>
+              <button className="btn-save" style={{ background: booking?.color || accentColor }}
+                disabled={!extendWeeks || extendWeeks < 1}
+                onClick={() => { onAdminExtend?.(extendWeeks); setExtendMode(false); }}>
+                Extend {extendWeeks} {extendWeeks === 1 ? "week" : "weeks"}
+              </button>
+            </>
+          ) : !isNew && isAdmin && moveMode ? (
             <>
               <button className="btn-cancel" onClick={() => { setMoveMode(false); setMoveConflictCount(null); }}>← Back</button>
               {moveConflictCount === null && (
@@ -1338,6 +1360,9 @@ function SlotModal({ accentColor, day, period, booking, onSave, onAdminSave, onA
           )}
           {!isNew && isAdmin && !delMode && !closureMode && (
             <button className="btn-move-toggle" onClick={() => { setMoveMode(true); setDelMode(false); }}>📦 Move…</button>
+          )}
+          {!isNew && isAdmin && !delMode && !closureMode && (
+            <button className="btn-move-toggle" onClick={() => { setExtendMode(true); setDelMode(false); }}>↻ Extend…</button>
           )}
           {!isNew && isAdmin && delMode && (
             <div className="recur-del-wrap">
@@ -1630,6 +1655,56 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
     setBookings(nextAll);
     await persist(wk, existing);
     onToast("Booking details updated ✓");
+  };
+
+  // Admin: extend a confirmed booking by N more weeks after its last occurrence
+  const handleAdminExtend = async (moreWeeks) => {
+    const { day, period } = modal;
+    const key = slotKey(day, period.id);
+    const bk = getBooking(day, period.id);
+    if (!bk) return;
+
+    // Find the last week that already has this booking (by recurId if set, else just current week)
+    const recurId = bk.recurId || `recur_${Date.now()}_${key}`;
+    const nextAll = { ...bookings };
+
+    let lastWk = wk;
+    if (bk.recurId) {
+      for (const wkk of Object.keys(nextAll)) {
+        if (nextAll[wkk]?.[key]?.recurId === bk.recurId && wkk > lastWk) lastWk = wkk;
+      }
+    }
+
+    // If this booking had no recurId yet, stamp it onto the current occurrence
+    if (!bk.recurId) {
+      const curSlots = { ...(nextAll[wk] || {}), [key]: { ...bk, recurId } };
+      if (bk.doublePartnerKey && curSlots[bk.doublePartnerKey]) {
+        curSlots[bk.doublePartnerKey] = { ...curSlots[bk.doublePartnerKey], recurId };
+      }
+      nextAll[wk] = curSlots;
+      await persist(wk, curSlots);
+    }
+
+    const partnerKey = bk.doublePartnerKey || null;
+    const partnerBk = partnerKey ? (bookings[wk]?.[partnerKey] || null) : null;
+    const { recurring: _r, recurWeeks: _rw, pendingKey: _pk, ...baseBk } = bk;
+    const basePartnerBk = partnerBk ? (() => { const { recurring, recurWeeks, pendingKey, ...r } = partnerBk; return r; })() : null;
+
+    for (let i = 1; i <= moreWeeks; i++) {
+      const targetMon = addWeeks(getMondayOfWeek(new Date(lastWk)), i);
+      const wkk = weekKey(targetMon);
+      const wkSlots = { ...(nextAll[wkk] || await dbLoad(dbKeyFn(lab, wkk)) || {}) };
+      wkSlots[key] = { ...baseBk, recurId, status: "confirmed" };
+      if (partnerKey && basePartnerBk) {
+        wkSlots[partnerKey] = { ...basePartnerBk, recurId, status: "confirmed" };
+      }
+      nextAll[wkk] = wkSlots;
+      await persist(wkk, wkSlots);
+    }
+
+    setBookings(nextAll);
+    setModal(null);
+    onToast(`Booking extended by ${moreWeeks} ${moreWeeks === 1 ? "week" : "weeks"} ✓`);
   };
 
   // Admin: reject pending booking
@@ -2097,6 +2172,7 @@ function TimetableGrid({ accentColor, bookings, setBookings, monday, dbKeyFn, la
           onSave={handleSave}
           onAdminSave={handleAdminDirectSave}
           onAdminEditSave={handleAdminEditSave}
+          onAdminExtend={handleAdminExtend}
           onClosure={handleClosure}
           onClose={() => setModal(null)}
           onDelete={handleDelete}
@@ -2353,6 +2429,54 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
     setBookingsFor(sl.source)(nextAll);
     setSelectedSlot(null);
     onToast("Booking approved ✓");
+  };
+
+  const handleAdminExtend = async (moreWeeks) => {
+    const sl = selectedSlot;
+    if (!sl) return;
+    const key = slotKey(sl.day, sl.period.id);
+    const bk = getBk(sl);
+    if (!bk) return;
+    const bks = bookingsFor(sl.source);
+    const recurId = bk.recurId || `recur_${Date.now()}_${key}`;
+    const nextAll = { ...bks };
+
+    let lastWk = wk;
+    if (bk.recurId) {
+      for (const wkk of Object.keys(nextAll)) {
+        if (nextAll[wkk]?.[key]?.recurId === bk.recurId && wkk > lastWk) lastWk = wkk;
+      }
+    }
+
+    if (!bk.recurId) {
+      const curSlots = { ...(nextAll[wk] || {}), [key]: { ...bk, recurId } };
+      if (bk.doublePartnerKey && curSlots[bk.doublePartnerKey]) {
+        curSlots[bk.doublePartnerKey] = { ...curSlots[bk.doublePartnerKey], recurId };
+      }
+      nextAll[wk] = curSlots;
+      await persist(sl.source, wk, curSlots);
+    }
+
+    const partnerKey = bk.doublePartnerKey || null;
+    const partnerBk = partnerKey ? (bks[wk]?.[partnerKey] || null) : null;
+    const { recurring: _r, recurWeeks: _rw, pendingKey: _pk, ...baseBk } = bk;
+    const basePartnerBk = partnerBk ? (() => { const { recurring, recurWeeks, pendingKey, ...r } = partnerBk; return r; })() : null;
+
+    for (let i = 1; i <= moreWeeks; i++) {
+      const targetMon = addWeeks(getMondayOfWeek(new Date(lastWk)), i);
+      const wkk = weekKey(targetMon);
+      const wkSlots = { ...(nextAll[wkk] || await dbLoad(keyFnFor(sl.source)(lab, wkk)) || {}) };
+      wkSlots[key] = { ...baseBk, recurId, status: "confirmed" };
+      if (partnerKey && basePartnerBk) {
+        wkSlots[partnerKey] = { ...basePartnerBk, recurId, status: "confirmed" };
+      }
+      nextAll[wkk] = wkSlots;
+      await persist(sl.source, wkk, wkSlots);
+    }
+
+    setBookingsFor(sl.source)(nextAll);
+    setSelectedSlot(null);
+    onToast(`Booking extended by ${moreWeeks} ${moreWeeks === 1 ? "week" : "weeks"} ✓`);
   };
 
   const handleAdminReject = async () => {
@@ -2795,6 +2919,7 @@ function WeekOverview({ monday, inLabBookings, primaryBookings, setInLab, setPri
           onSave={handleSave}
           onAdminSave={handleSave}
           onAdminEditSave={handleAdminEditSave}
+          onAdminExtend={handleAdminExtend}
           onClosure={() => {}}
           onClose={() => setSelectedSlot(null)}
           onDelete={handleDelete}
